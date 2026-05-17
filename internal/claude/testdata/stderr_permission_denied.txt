@@ -1,0 +1,2 @@
+Error: Permission denied while trying to access /home/veschin/work/GoLeM/internal/config/secrets.go
+Claude does not have permission to read this file. Please check file permissions or run with appropriate access.

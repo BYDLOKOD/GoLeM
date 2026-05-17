@@ -1,0 +1,1 @@
+This job has no status file — simulates a crash during directory creation.

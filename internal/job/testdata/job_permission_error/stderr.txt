@@ -1,0 +1,1 @@
+Error: not allowed to execute bash commands

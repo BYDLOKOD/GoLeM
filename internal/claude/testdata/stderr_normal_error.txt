@@ -1,0 +1,3 @@
+Error: Failed to parse response from model API.
+Unexpected token at position 1247 in JSON response body.
+Retries exhausted after 3 attempts. Exiting with code 1.

@@ -32,11 +32,11 @@ func Reconcile(subagentsDir string, now time.Time) error {
 	if err != nil {
 		return fmt.Errorf("reconcile lock: %w", err)
 	}
-	defer lf.Close()
+	defer func() { _ = lf.Close() }()
 	if err := syscall.Flock(int(lf.Fd()), syscall.LOCK_EX); err != nil {
 		return fmt.Errorf("reconcile flock: %w", err)
 	}
-	defer syscall.Flock(int(lf.Fd()), syscall.LOCK_UN)
+	defer func() { _ = syscall.Flock(int(lf.Fd()), syscall.LOCK_UN) }()
 
 	entries, err := os.ReadDir(subagentsDir)
 	if err != nil {
@@ -88,7 +88,8 @@ func Reconcile(subagentsDir string, now time.Time) error {
 // alive and running, 0 otherwise.
 func reconcileJob(jobDir string, now time.Time) (int, error) {
 	status := readStatus(jobDir)
-	if status == "running" {
+	switch status {
+	case "running":
 		pid, err := readPID(jobDir)
 		if err != nil || !pidAlive(pid) {
 			if err := writeStatus(jobDir, "failed"); err != nil {
@@ -104,7 +105,7 @@ func reconcileJob(jobDir string, now time.Time) (int, error) {
 			return 0, nil
 		}
 		return 1, nil
-	} else if status == "queued" {
+	case "queued":
 		stale, err := IsStaleQueued(jobDir, now)
 		if err != nil {
 			return 0, err
@@ -199,7 +200,7 @@ func appendStderr(jobDir, msg string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if _, err := f.WriteString(msg + "\n"); err != nil {
 		return err
 	}

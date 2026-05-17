@@ -1,0 +1,1 @@
+Read src/auth/middleware.ts and add rate limiting using express-rate-limit. Limit to 100 requests per 15 minutes per IP.

@@ -1,0 +1,2 @@
+Error: Cannot find module 'typescript' in /home/veschin/work/broken-project
+    at Function.Module._resolveFilename (node:internal/modules/cjs/loader:1075:15)

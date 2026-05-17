@@ -1,0 +1,1 @@
+Refactor src/db/queries.ts to use parameterized queries instead of string concatenation for SQL injection prevention.

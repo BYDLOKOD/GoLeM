@@ -1,0 +1,1 @@
+Added rate limiting to src/auth/middleware.ts using express-rate-limit. Configuration: 100 requests per 15 minutes per IP, with standard headers enabled.

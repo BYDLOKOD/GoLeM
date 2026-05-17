@@ -1,0 +1,1 @@
+Write unit tests for src/utils/validators.ts covering email validation, phone number formatting, and date parsing edge cases.

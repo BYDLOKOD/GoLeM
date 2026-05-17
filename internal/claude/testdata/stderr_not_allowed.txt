@@ -1,0 +1,2 @@
+Error: Tool execution blocked — you are not allowed to execute bash commands in this permission mode.
+Please re-run with --dangerously-skip-permissions or adjust the permission mode to allow tool execution.

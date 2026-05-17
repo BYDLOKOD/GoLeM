@@ -1,0 +1,23 @@
+{
+  "description": "Expected environment variables built from a standard GoLeM config for Claude subprocess execution",
+  "config_input": {
+    "zai_api_key": "zai-key-abc123def456",
+    "zai_base_url": "https://api.z.ai/api/anthropic",
+    "zai_api_timeout_ms": "3000000",
+    "opus_model": "glm-5",
+    "sonnet_model": "glm-4.5",
+    "haiku_model": "glm-4.0"
+  },
+  "expected_env": {
+    "ANTHROPIC_AUTH_TOKEN": "zai-key-abc123def456",
+    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+    "API_TIMEOUT_MS": "3000000",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.0"
+  },
+  "expected_unset": [
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT"
+  ]
+}

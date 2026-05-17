@@ -1,0 +1,32 @@
+feature: job-lifecycle
+files:
+  - job_done/status
+  - job_done/pid.txt
+  - job_done/prompt.txt
+  - job_done/stdout.txt
+  - job_done/stderr.txt
+  - job_done/changelog.txt
+  - job_done/raw.json
+  - job_done/workdir.txt
+  - job_done/model.txt
+  - job_done/started_at.txt
+  - job_done/finished_at.txt
+  - job_done/permission_mode.txt
+  - job_running/status
+  - job_running/pid.txt
+  - job_running/prompt.txt
+  - job_running/started_at.txt
+  - job_queued/status
+  - job_queued/prompt.txt
+  - job_failed/status
+  - job_failed/stderr.txt
+  - job_failed/exit_code.txt
+  - job_corrupted/prompt.txt
+  - job_timeout/status
+  - job_timeout/stderr.txt
+  - job_killed/status
+  - job_killed/stderr.txt
+  - job_permission_error/status
+  - job_permission_error/stderr.txt
+  - project_id_git.json
+  - project_id_nongit.json

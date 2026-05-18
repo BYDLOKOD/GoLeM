@@ -2,28 +2,33 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/veschin/GoLeM/internal/claude"
 	"github.com/veschin/GoLeM/internal/cmd"
 	"github.com/veschin/GoLeM/internal/config"
+	"github.com/veschin/GoLeM/internal/dag"
 	"github.com/veschin/GoLeM/internal/exitcode"
 	"github.com/veschin/GoLeM/internal/job"
 	"github.com/veschin/GoLeM/internal/log"
+	"github.com/veschin/GoLeM/internal/mcp"
+	"github.com/veschin/GoLeM/internal/mcp/tools"
+	"github.com/veschin/GoLeM/internal/prompt"
 	"github.com/veschin/GoLeM/internal/proxy"
 	"github.com/veschin/GoLeM/internal/slot"
 )
 
-const version = "1.1.3"
+const version = "2.0.0"
 
 // logger is the global structured logger, initialized in run().
 var logger *log.Logger
@@ -92,6 +97,8 @@ func run(args []string) int {
 		return cmdKill(rest)
 	case "chain":
 		return cmdChain(rest)
+	case "pipeline":
+		return cmdPipeline(rest)
 	case "session":
 		return cmdSession(rest)
 	case "doctor":
@@ -106,6 +113,8 @@ func run(args []string) int {
 		return cmdUninstall()
 	case "_proxy":
 		return cmdProxy(rest)
+	case "mcp":
+		return cmdMCP()
 	case "version", "--version", "-v":
 		fmt.Println("glm " + version)
 		return 0
@@ -120,13 +129,14 @@ func run(args []string) int {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `Usage: glm {session|run|start|status|result|log|list|clean|kill|chain|update|doctor|config} [options]
+	fmt.Fprint(os.Stderr, `Usage: glm {session|run|start|status|result|log|list|clean|kill|chain|pipeline|update|doctor|config|mcp} [options]
 
 Commands:
   session [flags] [claude flags]     Interactive Claude Code
   run   [flags] "prompt"             Sync execution
   start [flags] "prompt"             Async execution
   chain [flags] "p1" "p2" ...        Chained execution
+  pipeline FILE                      Execute DAG pipeline from JSON file
   status  JOB_ID                     Check job status
   result  JOB_ID                     Get text output
   log     JOB_ID                     Show file changes
@@ -136,6 +146,7 @@ Commands:
   update                             Self-update from GitHub
   doctor                             Check system health
   config  {show|set KEY VAL}         Manage configuration
+  mcp                                MCP server (JSON-RPC over stdio)
 
 Flags:
   -d DIR              Working directory
@@ -144,8 +155,11 @@ Flags:
   --opus MODEL        Set opus model
   --sonnet MODEL      Set sonnet model
   --haiku MODEL       Set haiku model
+  --tier TIER         Model selection tier {light|medium|heavy|auto} (default: auto)
   --unsafe            Bypass all permission checks
   --mode MODE         Set permission mode
+  --system-prompt TEXT  System prompt appended to constrain the golem
+  --constraint KEY      Predefined constraint (repeatable): readonly, no-create, plan-first, scope:<path>
   --json              JSON output format
 `)
 }
@@ -163,7 +177,7 @@ func loadConfig() (*config.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	logger.Debug(fmt.Sprintf("model=%s api_rps=%d", cfg.Model, cfg.APIRPS))
+	logger.Debug(fmt.Sprintf("model=%s", cfg.Model))
 	return cfg, nil
 }
 
@@ -181,7 +195,7 @@ func reconcileAndInitSlots(cfg *config.Config) (*slot.SlotManager, error) {
 	if err := job.Reconcile(cfg.SubagentDir, time.Now()); err != nil {
 		logger.Warn("reconcile: " + err.Error())
 	}
-	sm := slot.NewSlotManager(cfg.SubagentDir, cfg.APIRPS)
+	sm := slot.NewSlotManager(cfg.SubagentDir, 0) // 0 = unlimited
 	if err := sm.Init(); err != nil {
 		return nil, fmt.Errorf("slot init: %w", err)
 	}
@@ -207,12 +221,7 @@ func die(err error) int {
 
 // hasFlag checks if a specific flag is present in args.
 func hasFlag(args []string, flag string) bool {
-	for _, a := range args {
-		if a == flag {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(args, flag)
 }
 
 // stripFlag removes a boolean flag from args and returns the cleaned slice.
@@ -263,6 +272,7 @@ func cmdRun(args []string) int {
 		return die(err)
 	}
 
+	// Caller handles reconciliation and slot wait.
 	sm, err := reconcileAndInitSlots(cfg)
 	if err != nil {
 		return die(err)
@@ -270,65 +280,37 @@ func cmdRun(args []string) int {
 	if err := sm.WaitForSlot(); err != nil {
 		return die(err)
 	}
-	defer func() {
-		if releaseErr := sm.ReleaseSlot(); releaseErr != nil {
-			logger.Warn("release slot: " + releaseErr.Error())
-		}
-	}()
 
 	projectID := resolveProjectID(flags.Dir)
 
-	// Create job, execute claude, and return result.
-	jobID := job.GenerateJobID()
-	j, err := job.NewJob(cfg.SubagentDir, projectID, jobID)
+	// ExecuteJob releases the slot via defer when done.
+	result, err := cmd.ExecuteJob(context.Background(), cmd.ExecuteJobParams{
+		Cfg:           cfg,
+		Flags:         flags,
+		SubagentsRoot: cfg.SubagentDir,
+		ProjectID:     projectID,
+		AutoDelete:    true,
+		SlotManager:   sm,
+	})
 	if err != nil {
 		return die(err)
 	}
 
-	// Write PID.
-	pid := os.Getpid()
-	_ = os.WriteFile(filepath.Join(j.Dir, "pid.txt"), []byte(strconv.Itoa(pid)), 0o644)
-
-	// Set status to running.
-	_ = j.StatusTransition(job.StatusRunning)
-
-	// Build claude config.
-	claudeCfg := buildClaudeConfig(cfg, flags, j.Dir)
-
-	// Execute.
-	exitCode, _ := claude.Execute(claudeCfg)
-
-	// Parse raw.json into stdout.txt + changelog.txt.
-	_ = claude.ParseRawJSON(j.Dir)
-
-	// Determine final status.
-	stderrData, _ := os.ReadFile(filepath.Join(j.Dir, "stderr.txt"))
-	finalStatus := claude.MapStatus(exitCode, string(stderrData))
-	_ = os.WriteFile(filepath.Join(j.Dir, "status"), []byte(finalStatus), 0o644)
-
 	if jsonMode {
-		_ = cmd.ResultJSON(cfg.SubagentDir, projectID, jobID, os.Stdout)
+		_ = cmd.ResultJSON(cfg.SubagentDir, projectID, result.JobID, os.Stdout)
 	} else {
-		// Print stdout.
-		stdoutData, _ := os.ReadFile(filepath.Join(j.Dir, "stdout.txt"))
-		if len(stdoutData) > 0 {
-			fmt.Fprint(os.Stdout, string(stdoutData))
+		if len(result.Stdout) > 0 {
+			_, _ = fmt.Fprint(os.Stdout, result.Stdout)
 		}
-
-		// Print changelog + stderr to stderr.
-		changelogData, _ := os.ReadFile(filepath.Join(j.Dir, "changelog.txt"))
-		if len(changelogData) > 0 {
-			fmt.Fprint(os.Stderr, string(changelogData))
+		if len(result.Changelog) > 0 {
+			_, _ = fmt.Fprint(os.Stderr, result.Changelog)
 		}
-		if len(stderrData) > 0 {
-			fmt.Fprint(os.Stderr, string(stderrData))
+		if len(result.Stderr) > 0 {
+			_, _ = fmt.Fprint(os.Stderr, result.Stderr)
 		}
 	}
 
-	// Auto-delete job directory.
-	job.DeleteJob(j.Dir)
-
-	return exitCode
+	return result.ExitCode
 }
 
 func cmdStart(args []string) int {
@@ -352,63 +334,64 @@ func cmdStart(args []string) int {
 		return die(err)
 	}
 
-	sm, err := reconcileAndInitSlots(cfg)
-	if err != nil {
-		return die(err)
-	}
-
 	projectID := resolveProjectID(flags.Dir)
 
-	// Create job.
+	// Pre-create job so the user gets a valid job ID immediately.
 	jobID := job.GenerateJobID()
 	j, err := job.NewJob(cfg.SubagentDir, projectID, jobID)
 	if err != nil {
 		return die(err)
 	}
 
-	// Write PID before printing job ID.
+	// Write PID before printing job ID (preserves original timing).
 	pid := os.Getpid()
 	_ = os.WriteFile(filepath.Join(j.Dir, "pid.txt"), []byte(strconv.Itoa(pid)), 0o644)
 
 	// Print job ID immediately.
-	fmt.Fprintln(os.Stdout, jobID)
+	_, _ = fmt.Fprintln(os.Stdout, jobID)
 
-	// Run in background goroutine with slot management.
+	// Run in background goroutine.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		slotClaimed := false
 		defer func() {
 			if r := recover(); r != nil {
 				_ = os.WriteFile(filepath.Join(j.Dir, "status"), []byte("failed"), 0o644)
 				_ = os.WriteFile(filepath.Join(j.Dir, "stderr.txt"),
-					[]byte(fmt.Sprintf("panic: %v", r)), 0o644)
-			}
-			if slotClaimed {
-				if releaseErr := sm.ReleaseSlot(); releaseErr != nil {
-					logger.Warn("release slot: " + releaseErr.Error())
-				}
+					fmt.Appendf(nil, "panic: %v", r), 0o644)
 			}
 		}()
 
-		// Wait for a slot — job stays "queued" until acquired.
+		// Caller handles reconciliation and slot wait inside the goroutine.
+		sm, slotErr := reconcileAndInitSlots(cfg)
+		if slotErr != nil {
+			_ = os.WriteFile(filepath.Join(j.Dir, "status"), []byte("failed"), 0o644)
+			_ = os.WriteFile(filepath.Join(j.Dir, "stderr.txt"),
+				fmt.Appendf(nil, "slot init: %v", slotErr), 0o644)
+			return
+		}
 		if waitErr := sm.WaitForSlot(); waitErr != nil {
 			_ = os.WriteFile(filepath.Join(j.Dir, "status"), []byte("failed"), 0o644)
 			_ = os.WriteFile(filepath.Join(j.Dir, "stderr.txt"),
-				[]byte(fmt.Sprintf("slot wait failed: %v", waitErr)), 0o644)
+				fmt.Appendf(nil, "slot wait: %v", waitErr), 0o644)
 			return
 		}
-		slotClaimed = true
 
-		_ = j.StatusTransition(job.StatusRunning)
-
-		claudeCfg := buildClaudeConfig(cfg, flags, j.Dir)
-		exitCode, _ := claude.Execute(claudeCfg)
-		_ = claude.ParseRawJSON(j.Dir)
-
-		stderrData, _ := os.ReadFile(filepath.Join(j.Dir, "stderr.txt"))
-		finalStatus := claude.MapStatus(exitCode, string(stderrData))
-		_ = os.WriteFile(filepath.Join(j.Dir, "status"), []byte(finalStatus), 0o644)
+		// ExecuteJob releases the slot via defer when done.
+		_, execErr := cmd.ExecuteJob(context.Background(), cmd.ExecuteJobParams{
+			Cfg:           cfg,
+			Flags:         flags,
+			SubagentsRoot: cfg.SubagentDir,
+			ProjectID:     projectID,
+			AutoDelete:    false,
+			SlotManager:   sm,
+			JobID:         jobID,
+		})
+		if execErr != nil {
+			_ = os.WriteFile(filepath.Join(j.Dir, "status"), []byte("failed"), 0o644)
+			_ = os.WriteFile(filepath.Join(j.Dir, "stderr.txt"),
+				[]byte(execErr.Error()), 0o644)
+		}
 	}()
 
 	// Wait for completion or signal.
@@ -570,10 +553,10 @@ func cmdList(args []string) int {
 			if jsonErr := json.NewDecoder(resp.Body).Decode(&hr); jsonErr == nil {
 				uptime := time.Duration(hr.UptimeSec) * time.Second
 				uptimeStr := uptime.Round(time.Second).String()
-				fmt.Fprintf(os.Stdout, "Proxy: active=%d queued=%d total=%d | uptime=%s\n",
+				_, _ = fmt.Fprintf(os.Stdout, "Proxy: active=%d queued=%d total=%d | uptime=%s\n",
 					hr.Active, hr.Queued, hr.TotalRequests, uptimeStr)
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 	}
 
@@ -681,20 +664,8 @@ func cmdChain(args []string) int {
 		Prompts:         prompts,
 	}
 
-	sm, slotErr := reconcileAndInitSlots(cfg)
-	if slotErr != nil {
-		return die(slotErr)
-	}
-	if slotErr = sm.WaitForSlot(); slotErr != nil {
-		return die(slotErr)
-	}
-	defer func() {
-		if releaseErr := sm.ReleaseSlot(); releaseErr != nil {
-			logger.Warn("release slot: " + releaseErr.Error())
-		}
-	}()
-
-	result, err := cmd.ChainCmd(cf, cfg.SubagentDir, projectID, os.Stdout, os.Stderr)
+	// ChainCmd manages per-step slot acquisition internally; no pre-acquisition here.
+	result, err := cmd.ChainCmd(cf, cfg, cfg.SubagentDir, projectID, os.Stdout, os.Stderr)
 	if err != nil {
 		return die(err)
 	}
@@ -707,6 +678,7 @@ func extractPrompts(args []string) []string {
 	flagsWithValue := map[string]bool{
 		"-d": true, "-t": true, "-m": true, "--model": true,
 		"--opus": true, "--sonnet": true, "--haiku": true, "--mode": true,
+		"--tier": true, "--system-prompt": true, "--constraint": true,
 	}
 
 	var prompts []string
@@ -725,6 +697,131 @@ func extractPrompts(args []string) []string {
 		prompts = append(prompts, a)
 	}
 	return prompts
+}
+
+func cmdPipeline(args []string) int {
+	// Parse --system-prompt and --constraint flags from args.
+	// The pipeline file path is the first non-flag argument.
+	var systemPromptFlag string
+	var constraintFlags []string
+	var remainingArgs []string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--system-prompt":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, `err:user "Missing value for --system-prompt flag"`)
+				return exitcode.UserError
+			}
+			systemPromptFlag = args[i+1]
+			i++
+		case "--constraint":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, `err:user "Missing value for --constraint flag"`)
+				return exitcode.UserError
+			}
+			constraintFlags = append(constraintFlags, args[i+1])
+			i++
+		default:
+			remainingArgs = append(remainingArgs, args[i])
+		}
+	}
+
+	if len(remainingArgs) == 0 {
+		fmt.Fprintln(os.Stderr, `err:user "No pipeline file provided"`)
+		return exitcode.UserError
+	}
+
+	filePath := remainingArgs[0]
+
+	cfg, err := loadConfig()
+	if err != nil {
+		return die(err)
+	}
+
+	ensureProxy(cfg)
+
+	// Load the DAG definition.
+	d, err := dag.LoadDAGFromFile(filePath)
+	if err != nil {
+		return die(err)
+	}
+
+	// Validate.
+	if err := d.Validate(); err != nil {
+		return die(err)
+	}
+
+	// Resolve working directory.
+	cwd, _ := os.Getwd()
+	projectID := resolveProjectID(cwd)
+
+	// Create a base directory for step job directories.
+	pipelineDir := filepath.Join(cfg.SubagentDir, projectID, "pipeline-"+job.GenerateJobID())
+	if err := os.MkdirAll(pipelineDir, 0o755); err != nil {
+		return die(fmt.Errorf("create pipeline dir: %w", err))
+	}
+	defer func() { _ = os.RemoveAll(pipelineDir) }()
+
+	// Slot management: one slot for the entire pipeline.
+	sm, err := reconcileAndInitSlots(cfg)
+	if err != nil {
+		return die(err)
+	}
+	if err := sm.WaitForSlot(); err != nil {
+		return die(err)
+	}
+	defer func() {
+		if releaseErr := sm.ReleaseSlot(); releaseErr != nil {
+			logger.Warn("release slot: " + releaseErr.Error())
+		}
+	}()
+
+	// Determine model and timeout defaults.
+	model := cfg.Model
+	timeout := config.DefaultTimeout
+
+	// Assemble system prompt: CLI flags take precedence over config default.
+	baseSystemPrompt := systemPromptFlag
+	if baseSystemPrompt == "" {
+		baseSystemPrompt = cfg.SystemPrompt
+	}
+	finalSystemPrompt, err := prompt.AssembleSystemPrompt(constraintFlags, baseSystemPrompt)
+	if err != nil {
+		return die(err)
+	}
+
+	// Create executor with assembled system prompt.
+	executor := dag.NewClaudeStepExecutor(cfg, pipelineDir, cwd, model, timeout, finalSystemPrompt)
+
+	// Create scheduler with unlimited concurrency (0 = unlimited).
+	scheduler := dag.NewScheduler(executor, 0)
+
+	// Run the pipeline.
+	results, _, err := scheduler.Run(context.Background(), d)
+	if err != nil {
+		return die(err)
+	}
+
+	// Print results.
+	anyFailed := false
+	for _, step := range d.Steps {
+		arts := results[step.ID]
+		if len(arts) == 0 {
+			fmt.Fprintf(os.Stderr, "[FAIL] step %q: failed or skipped\n", step.ID)
+			anyFailed = true
+			continue
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "[OK]   step %q:\n", step.ID)
+		if len(arts[0].Content) > 0 {
+			_, _ = fmt.Fprintln(os.Stdout, string(arts[0].Content))
+		}
+	}
+
+	if anyFailed {
+		return 1
+	}
+	return 0
 }
 
 func cmdSession(args []string) int {
@@ -777,7 +874,6 @@ func cmdDoctor() int {
 		cfg = &config.Config{
 			SubagentDir: filepath.Join(home, ".claude", "subagents"),
 			ConfigDir:   filepath.Join(home, ".config", "GoLeM"),
-			APIRPS:      config.DefaultAPIRPS,
 			OpusModel:   config.DefaultModel,
 			SonnetModel: config.DefaultModel,
 			HaikuModel:  config.DefaultModel,
@@ -790,7 +886,6 @@ func cmdDoctor() int {
 		ZAIEndpoint:      config.ZaiBaseURL,
 		HTTPTimeout:      5 * time.Second,
 		SubagentsRoot:    cfg.SubagentDir,
-		APIRPS:           cfg.APIRPS,
 		OpusModel:        cfg.OpusModel,
 		SonnetModel:      cfg.SonnetModel,
 		HaikuModel:       cfg.HaikuModel,
@@ -904,7 +999,6 @@ func cmdInstall() int {
 
 	opts := cmd.InstallOptions{
 		CloneDir:     cloneDir,
-		BinDir:       filepath.Join(home, ".local", "bin"),
 		ConfigDir:    filepath.Join(home, ".config", "GoLeM"),
 		ClaudeMDPath: filepath.Join(home, ".claude", "CLAUDE.md"),
 		SubagentsDir: filepath.Join(home, ".claude", "subagents"),
@@ -926,7 +1020,6 @@ func cmdUninstall() int {
 	}
 
 	opts := cmd.UninstallOptions{
-		BinDir:       filepath.Join(home, ".local", "bin"),
 		ConfigDir:    filepath.Join(home, ".config", "GoLeM"),
 		ClaudeMDPath: filepath.Join(home, ".claude", "CLAUDE.md"),
 		SubagentsDir: filepath.Join(home, ".claude", "subagents"),
@@ -947,7 +1040,6 @@ func cmdProxy(args []string) int {
 	}
 
 	port := cfg.ProxyPort
-	concurrency := cfg.APIRPS
 	idleTimeout := cfg.ProxyIdleTimeout
 	target := cfg.ZaiBaseURL
 	configDir := cfg.ConfigDir
@@ -963,11 +1055,11 @@ func cmdProxy(args []string) int {
 				}
 			}
 		case "--concurrency":
+			// Removed: global concurrency limit no longer used.
+			// Accept and discard the flag for backward compatibility with running proxy daemons.
 			if i+1 < len(args) {
 				i++
-				if n, err := strconv.Atoi(args[i]); err == nil {
-					concurrency = n
-				}
+				_ = args[i] // discard value
 			}
 		case "--idle-timeout":
 			if i+1 < len(args) {
@@ -989,12 +1081,20 @@ func cmdProxy(args []string) int {
 		}
 	}
 
+	// Build per-model config from glm.toml [models] section.
+	// If no [models] section exists, fall back to global concurrency.
+	var modelsCfg map[string]int
+	if len(cfg.Models) > 0 {
+		modelsCfg = cfg.Models
+	}
+
 	p := proxy.New(proxy.Config{
 		TargetURL:   target,
-		Concurrency: concurrency,
+		Concurrency: 1, // fallback for global-semaphore mode when no [models] section
 		IdleTimeout: time.Duration(idleTimeout) * time.Second,
 		Port:        port,
 		LogFile:     filepath.Join(configDir, "proxy.log"),
+		Models:      modelsCfg,
 	})
 
 	// Start the proxy in a goroutine so we can write the PID file
@@ -1056,7 +1156,10 @@ func ensureProxy(cfg *config.Config) {
 		logger.Warn("proxy: cannot find executable: " + err.Error())
 		return
 	}
-	proxyPort, err := proxy.EnsureRunning(glmBin, cfg.ConfigDir, cfg.ZaiBaseURL, cfg.APIRPS, time.Duration(cfg.ProxyIdleTimeout)*time.Second)
+	if realBin, evalErr := filepath.EvalSymlinks(glmBin); evalErr == nil {
+		glmBin = realBin
+	}
+	proxyPort, err := proxy.EnsureRunning(glmBin, cfg.ConfigDir, cfg.ZaiBaseURL, time.Duration(cfg.ProxyIdleTimeout)*time.Second)
 	if err != nil {
 		logger.Warn("proxy: " + err.Error())
 		return
@@ -1064,46 +1167,71 @@ func ensureProxy(cfg *config.Config) {
 	cfg.ZaiBaseURL = fmt.Sprintf("http://localhost:%d", proxyPort)
 }
 
-// buildClaudeConfig creates a claude.Config from the loaded config and parsed flags.
-func buildClaudeConfig(cfg *config.Config, flags *cmd.Flags, jobDir string) claude.Config {
-	opusModel := cfg.OpusModel
-	sonnetModel := cfg.SonnetModel
-	haikuModel := cfg.HaikuModel
-
-	if flags.Model != "" {
-		opusModel = flags.Model
-		sonnetModel = flags.Model
-		haikuModel = flags.Model
-	}
-	if flags.OpusModel != "" {
-		opusModel = flags.OpusModel
-	}
-	if flags.SonnetModel != "" {
-		sonnetModel = flags.SonnetModel
-	}
-	if flags.HaikuModel != "" {
-		haikuModel = flags.HaikuModel
+func cmdMCP() int {
+	cfg, err := loadConfig()
+	if err != nil {
+		logger.Error("load config: " + err.Error())
+		return 1
 	}
 
-	permMode := cfg.PermissionMode
-	if flags.PermissionMode != "" {
-		permMode = flags.PermissionMode
-	}
+	ensureProxy(cfg)
 
-	return claude.Config{
-		ZAIAPIKey:       cfg.ZaiAPIKey,
-		ZAIBaseURL:      cfg.ZaiBaseURL,
-		ZAIAPITimeoutMS: cfg.ZaiAPITimeoutMs,
-		OpusModel:       opusModel,
-		SonnetModel:     sonnetModel,
-		HaikuModel:      haikuModel,
-		PermissionMode:  permMode,
-		Model:           sonnetModel, // default execution model
-		Prompt:          flags.Prompt,
-		WorkDir:         flags.Dir,
-		TimeoutSecs:     flags.Timeout,
-		JobDir:          jobDir,
+	transport := mcp.NewStdioTransport(os.Stdin, os.Stdout)
+	srv := mcp.NewServer(transport)
+	// TODO: wire event bus for MCP progress notifications (glm_start progress events)
+
+	// Register all tool handlers.
+	tc := tools.NewToolContext(cfg, cfg.SubagentDir, "")
+	srv.RegisterTool(mcp.ToolDefinition{
+		Name:        "glm_run",
+		Description: "Execute a GLM subagent task synchronously",
+		InputSchema: tools.RunDefinition(),
+	}, tools.RunHandler(tc))
+	srv.RegisterTool(mcp.ToolDefinition{
+		Name:        "glm_start",
+		Description: "Start a GLM subagent task asynchronously",
+		InputSchema: tools.StartDefinition(),
+	}, tools.StartHandler(tc))
+	srv.RegisterTool(mcp.ToolDefinition{
+		Name:        "glm_status",
+		Description: "Check the status of a GLM subagent job",
+		InputSchema: tools.StatusDefinition(),
+	}, tools.StatusHandler(tc))
+	srv.RegisterTool(mcp.ToolDefinition{
+		Name:        "glm_result",
+		Description: "Retrieve the output of a completed GLM subagent job",
+		InputSchema: tools.ResultDefinition(),
+	}, tools.ResultHandler(tc))
+	srv.RegisterTool(mcp.ToolDefinition{
+		Name:        "glm_list",
+		Description: "List all GLM subagent jobs with optional filters",
+		InputSchema: tools.ListDefinition(),
+	}, tools.ListHandler(tc))
+	srv.RegisterTool(mcp.ToolDefinition{
+		Name:        "glm_kill",
+		Description: "Terminate a running GLM subagent job",
+		InputSchema: tools.KillDefinition(),
+	}, tools.KillHandler(tc))
+	srv.RegisterTool(mcp.ToolDefinition{
+		Name:        "glm_chain",
+		Description: "Execute a chain of GLM subagent tasks sequentially",
+		InputSchema: tools.ChainDefinition(),
+	}, tools.ChainHandler(tc))
+	srv.RegisterTool(mcp.ToolDefinition{
+		Name:        "glm_pipeline",
+		Description: "Execute a DAG pipeline of GLM subagent steps with dependency ordering and parallel execution",
+		InputSchema: tools.PipelineDefinition(),
+	}, tools.NewPipelineHandler(cfg, nil, 0))
+
+	// Block until stdin closes or signal received.
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	if err := srv.Serve(ctx); err != nil {
+		logger.Error("mcp serve: " + err.Error())
+		return 1
 	}
+	return 0
 }
 
 // findClaude locates the claude binary in PATH.

@@ -36,13 +36,13 @@ func TestConcurrentEnsureRunningUsesFlockToPreventDuplicates(t *testing.T) {
 				t.Errorf("open lock: %v", err)
 				return
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 
 			if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
 				t.Errorf("flock: %v", err)
 				return
 			}
-			defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+			defer func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }()
 
 			// Inside critical section — only one goroutine at a time.
 			cur := atomic.AddInt64(&inFlight, 1)
@@ -79,11 +79,11 @@ func TestEnsureRunningCreatesLockFile(t *testing.T) {
 		t.Fatalf("open lock file: %v", err)
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		f.Close()
+		_ = f.Close()
 		t.Fatalf("flock: %v", err)
 	}
-	syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-	f.Close()
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	_ = f.Close()
 
 	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
 		t.Errorf("lock file %q was not created", lockPath)

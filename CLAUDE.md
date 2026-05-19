@@ -1,103 +1,154 @@
-<!-- ---ptsd--- -->
-# Claude Agent Instructions
+# GoLeM -- GLM Subagent Bridge for Claude Code
 
-## Authority Hierarchy (ENFORCED BY HOOKS)
+GoLeM lets Claude Code (Opus) delegate work to GLM (Z.AI Chinese AI models) as subagents.
+Opus orchestrates, GLM models execute tasks via the `glm` CLI.
 
-PTSD (iron law) > User (context provider) > Assistant (executor)
+- **Origin**: Forked from [github.com/veschin/GoLeM](https://github.com/veschin/GoLeM)
+- **Language**: Go, stdlib-only (zero external dependencies)
+- **Go version**: 1.25.7
 
-- PTSD decides what CAN and CANNOT be done. Pipeline, gates, validation — non-negotiable.
-  Hooks enforce this automatically — writes that violate pipeline are BLOCKED.
-- User provides context and requirements. User also follows ptsd rules.
-- Assistant executes within ptsd constraints. Writes code, docs, tests on behalf of user.
+## Git Workflow
 
-## Session Start Protocol
+**Working directly in `main` is ALLOWED for this project.** This overrides the global "never commit to main" rule.
 
-EVERY session, BEFORE any work:
-1. Run: ptsd context --agent — see full pipeline state
-2. Run: ptsd task next --agent — get next task
-3. Follow output exactly.
+Use worktrees (Agent tool with `isolation: "worktree"`) for larger features or parallel work.
 
-## Commands (always use --agent flag)
+### Commit format
 
-- ptsd context --agent              — full pipeline state (auto-injected by hooks)
-- ptsd status --agent               — project overview
-- ptsd task next --agent            — next task to work on
-- ptsd task update <id> --status WIP — mark task in progress
-- ptsd validate --agent             — check pipeline before commit
-- ptsd feature list --agent         — list all features
-- ptsd seed init <id> --agent       — initialize seed directory
-- ptsd gate-check --file <path> --agent — check if file write is allowed
+```text
+type(scope): message
+```
 
-## Skills
+| Types | Scopes |
+| --- | --- |
+| feat, fix, refactor, test, docs, chore, perf | mcp, proxy, slot, dag, channel, router, config, claude, job, cmd, log, prompt, validation |
 
-PTSD pipeline skills are in `.claude/skills/` — auto-loaded when relevant.
+Examples: `feat(mcp): add JSON-RPC transport`, `fix(proxy): handle rate limit 429 retry`
 
-| Skill | When to Use |
-|-------|------------|
-| write-prd | Creating or updating a PRD section |
-| write-seed | Creating seed data for a feature |
-| write-bdd | Writing Gherkin BDD scenarios |
-| write-tests | Writing tests from BDD scenarios |
-| write-impl | Implementing to make tests pass |
-| create-tasks | Adding tasks to tasks.yaml |
-| review-prd | Reviewing PRD before advancing to seed |
-| review-seed | Reviewing seed data before advancing to bdd |
-| review-bdd | Reviewing BDD before advancing to tests |
-| review-tests | Reviewing tests before advancing to impl |
-| review-impl | Reviewing implementation after tests pass |
-| workflow | Session start or when unsure what to do next |
-| adopt | Bootstrapping existing project into PTSD |
+### Signing
 
-Use the corresponding write skill, then review skill at each pipeline stage.
+- Always `--signoff`
+- Never `--no-gpg-sign`
 
-## Pipeline (strict order, no skipping)
+## Project Structure
 
-PRD → Seed → BDD → Tests → Implementation
+```text
+cmd/glm/main.go          -- CLI entry point (13 subcommands)
+internal/
+  claude/                 -- Claude CLI execution & JSON parsing
+  cmd/                    -- Subcommand implementations
+  config/                 -- TOML config, env overrides, API keys
+  e2e/                    -- End-to-end tests
+  exitcode/               -- Exit code constants
+  job/                    -- Job lifecycle, status FSM, reconciliation
+  log/                    -- Structured logging (human/JSON)
+  prompt/                 -- Constraint expansion and system prompt assembly
+  proxy/                  -- Rate-limiting reverse proxy for Z.AI API
+  slot/                   -- File-based concurrency control (flock)
+  validation/             -- Chain output validation (contains, not_contains, matches)
+```
 
-Each stage requires review score ≥ 7 before advancing.
-Hooks enforce gates automatically — blocked writes show the reason.
+## Build and Test
 
-## Rules
+| Action | Command |
+| --- | --- |
+| Build | `go build -o glm ./cmd/glm/` |
+| Test all | `go test ./...` |
+| Test specific | `go test ./internal/proxy/` |
+| Test with race detector | `go test -race ./...` |
+| Vet | `go vet ./...` |
 
-- NO mocks for internal code. Real tests, real files, temp directories.
-- NO garbage files. Every file must link to a feature.
-- NO hiding errors. Explain WHY something failed.
-- NO over-engineering. Minimum code for the current task.
-- ALWAYS run: ptsd validate --agent before committing.
-- COMMIT FORMAT: [SCOPE] type: message
-  Scopes: PRD, SEED, BDD, TEST, IMPL, TASK, STATUS
-  Types: feat, add, fix, refactor, remove, update
+## Development Conventions
 
-## Troubleshooting
+### Testing
 
-When ptsd status/validate shows unexpected results, debug with these steps:
+- TDD: tests first, implementation second.
+- No mocks for internal code -- use real files, `t.TempDir()`, real goroutines.
+- HTTP tests use `httptest.NewServer`.
+- I/O tests use `bytes.Buffer`.
+- Filesystem tests use `t.TempDir()`.
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| TESTS:0 but test files exist | Tests not mapped to features | `ptsd test map .ptsd/bdd/<id>.feature <test-file>` for each feature |
-| BDD:0 but .feature files exist | State hashes empty, SyncState not run | `ptsd status --agent` triggers sync; if still 0, check `.ptsd/bdd/<id>.feature` has `@feature:<id>` tag on line 1 |
-| Feature stuck at wrong stage | review-status.yaml stale or stage not advanced | Run `ptsd review <id> <stage> <score>` to advance; check `ptsd context --agent` for blockers |
-| "no test files mapped" on `ptsd test run` | Test mapping missing in state.yaml | `ptsd test map .ptsd/bdd/<id>.feature <test-file>` |
-| Gate blocks file write | File not in allowed list for current stage | Check `ptsd gate-check --file <path> --agent`; advance feature to correct stage first |
-| Validate shows "mock detected" | Test file contains mock/stub patterns | Replace mocks with real file-based tests in temp directories |
-| Regression warning on status | Artifact file changed after stage was reviewed | Re-review the stage: `ptsd review <id> <stage> <score>` |
+### Error handling
 
-### Debug flow
-1. `ptsd context --agent` — shows next action, blockers, stage per feature
-2. `ptsd feature show <id> --agent` — shows artifact counts and test stats
-3. `ptsd validate --agent` — shows all pipeline violations
-4. Check `.ptsd/state.yaml` — hashes, test mappings, stages
-5. Check `.ptsd/review-status.yaml` — review verdicts per feature
+Prefixed errors: `err:user`, `err:config`, `err:timeout`, etc.
 
-### Test mapping
-Each feature needs: BDD file (`.ptsd/bdd/<id>.feature`) with `@feature:<id>` tag → mapped to test file via `ptsd test map`. Without mapping, ptsd cannot track test results per feature.
+### Exit codes
 
-## Forbidden
+| Code | Meaning |
+| --- | --- |
+| 0 | Success |
+| 1 | User error |
+| 124 | Timeout |
+| 127 | Dependency missing |
 
-- Mocking internal code
-- Skipping pipeline steps
-- Hiding errors or pretending something works
-- Generating files not linked to a feature
-- Using --force, --skip-validation, --no-verify
+### Dependencies
 
-<!-- ---ptsd--- -->
+No external dependencies. Stdlib only. If it is not in the Go standard library, it does not go in.
+
+### Job storage
+
+File-based at `~/.claude/subagents/<project-id>/<job-id>/`.
+
+## Architecture
+
+### Communication flow
+
+```text
+Opus --> glm CLI (Bash tool) --> subprocess `claude` CLI --> raw.json --> parse --> stdout.txt
+```
+
+### Concurrency
+
+- File-based slot manager: flock + counter.
+- Proxy semaphore channel for rate limiting.
+
+### System prompts and constraints
+
+Constraints and free-text system prompt are assembled by `internal/prompt/` and passed to `claude` via `--append-system-prompt`.
+
+- CLI: `--system-prompt TEXT`, `--constraint KEY` (repeatable)
+- MCP: `system_prompt` and `constraints` fields in all tool inputs
+- Config: `system_prompt` field in `glm.toml` sets a default for all jobs
+
+Constraint vocabulary:
+
+| Key | Effect |
+| --- | --- |
+| `readonly` | No file writes or shell commands that mutate state |
+| `no-create` | No new file creation |
+| `plan-first` | Output a plan and wait for approval before acting |
+| `scope:<path>` | Restrict work to the given path |
+
+### Chain validation and retry
+
+Step outputs can be validated by `internal/validation/` before the chain advances.
+
+- Expressions: `contains:<text>`, `not_contains:<text>`, `matches:<regexp>`
+- `dag.Step.Validate` — list of expressions checked against step stdout
+- `dag.Step.Retry` / `dag.RetryConfig` — `MaxAttempts` and optional `Feedback` prompt injected on failure
+- Gate steps (`type: "gate"`) validate without invoking Claude — zero-cost checks in pipelines
+- MCP types mirror the same fields: `ChainInputStep.Validate`, `ChainInputStep.Retry`
+
+### Configuration
+
+- Config file: `~/.config/GoLeM/glm.toml` (TOML format, env var overrides supported)
+- API key: `~/.config/GoLeM/zai_api_key`
+- `system_prompt` — default system prompt prepended to every job (optional)
+
+## Roadmap
+
+See `ROADMAP.md` for the full improvement plan.
+
+Key phases:
+
+- MCP Server (highest priority)
+- Streaming
+- Channels
+- DAG Pipeline
+- Smart Routing
+
+## Design Decisions
+
+- Keep CLI working alongside any new interfaces (backward compatibility).
+- MCP server is the highest priority improvement.
+- All new packages follow existing patterns: `internal/`, own `_test.go` files, no mocks.

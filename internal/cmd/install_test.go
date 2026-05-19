@@ -624,6 +624,7 @@ func TestInstallOverExistingInstallationReRunsSetup(t *testing.T) {
 // ─── InjectClaudeMD helper tests ───────────────────────────────────────────────
 
 func TestInjectClaudeMDCreatesFile(t *testing.T) {
+	t.Parallel()
 	tmpDir := t.TempDir()
 	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
 
@@ -641,6 +642,7 @@ func TestInjectClaudeMDCreatesFile(t *testing.T) {
 }
 
 func TestInjectClaudeMDReplacesSection(t *testing.T) {
+	t.Parallel()
 	tmpDir := t.TempDir()
 	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
 
@@ -675,6 +677,7 @@ Footer
 }
 
 func TestInjectClaudeMDAppendsWhenNoMarkers(t *testing.T) {
+	t.Parallel()
 	tmpDir := t.TempDir()
 	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
 
@@ -698,6 +701,7 @@ func TestInjectClaudeMDAppendsWhenNoMarkers(t *testing.T) {
 }
 
 func TestRemoveClaudeMDSection(t *testing.T) {
+	t.Parallel()
 	tmpDir := t.TempDir()
 	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
 
@@ -730,6 +734,7 @@ Footer
 }
 
 func TestRemoveClaudeMDSectionNoMarkersNoOp(t *testing.T) {
+	t.Parallel()
 	tmpDir := t.TempDir()
 	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
 
@@ -748,6 +753,7 @@ func TestRemoveClaudeMDSectionNoMarkersNoOp(t *testing.T) {
 }
 
 func TestRemoveClaudeMDSectionNoFileNoOp(t *testing.T) {
+	t.Parallel()
 	tmpDir := t.TempDir()
 	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
 
@@ -761,6 +767,7 @@ func TestRemoveClaudeMDSectionNoFileNoOp(t *testing.T) {
 // ─── MCP Registration ──────────────────────────────────────────────────────────
 
 func TestRegisterMCPServerAtPath_NewFile(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 
@@ -791,6 +798,7 @@ func TestRegisterMCPServerAtPath_NewFile(t *testing.T) {
 }
 
 func TestRegisterMCPServerAtPath_Idempotent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 
@@ -822,6 +830,7 @@ func TestRegisterMCPServerAtPath_Idempotent(t *testing.T) {
 }
 
 func TestRegisterMCPServerAtPath_PreservesExistingServers(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 
@@ -860,6 +869,7 @@ func TestRegisterMCPServerAtPath_PreservesExistingServers(t *testing.T) {
 }
 
 func TestRegisterMCPServerAtPath_PreservesExistingSettings(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 
@@ -896,6 +906,7 @@ func TestRegisterMCPServerAtPath_PreservesExistingSettings(t *testing.T) {
 }
 
 func TestRegisterMCPServerAtPath_MalformedJSON(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 
@@ -920,6 +931,7 @@ func TestRegisterMCPServerAtPath_MalformedJSON(t *testing.T) {
 }
 
 func TestRegisterMCPServerAtPath_CreatesParentDir(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nested", "dir", "settings.json")
 
@@ -936,6 +948,7 @@ func TestRegisterMCPServerAtPath_CreatesParentDir(t *testing.T) {
 // ─── MCP Deregistration ────────────────────────────────────────────────────────
 
 func TestDeregisterMCPServerAtPath(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 
@@ -962,6 +975,7 @@ func TestDeregisterMCPServerAtPath(t *testing.T) {
 }
 
 func TestDeregisterMCPServerAtPath_PreservesOtherServers(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 
@@ -1001,6 +1015,7 @@ func TestDeregisterMCPServerAtPath_PreservesOtherServers(t *testing.T) {
 }
 
 func TestDeregisterMCPServerAtPath_NoFile(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 
@@ -1011,6 +1026,7 @@ func TestDeregisterMCPServerAtPath_NoFile(t *testing.T) {
 }
 
 func TestDeregisterMCPServerAtPath_MalformedJSON(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 
@@ -1023,6 +1039,7 @@ func TestDeregisterMCPServerAtPath_MalformedJSON(t *testing.T) {
 }
 
 func TestDeregisterMCPServerAtPath_NoGolemEntry(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 

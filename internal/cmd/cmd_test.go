@@ -57,6 +57,7 @@ func deadPID() int { return 2<<22 - 1 } // 8388607
 // Scenario: Parse all flags for run command
 // seed: flags_happy_run.json
 func TestParseAllFlagsForRunCommand(t *testing.T) {
+	t.Parallel()
 	args := []string{
 		"run",
 		"-d", "/home/veschin/work/project",
@@ -87,6 +88,7 @@ func TestParseAllFlagsForRunCommand(t *testing.T) {
 // Scenario: Parse per-slot model override flags
 // seed: flags_per_slot.json
 func TestParsePerSlotModelOverrideFlags(t *testing.T) {
+	t.Parallel()
 	args := []string{
 		"run",
 		"--opus", "glm-5",
@@ -116,6 +118,7 @@ func TestParsePerSlotModelOverrideFlags(t *testing.T) {
 // Scenario: Parse --unsafe flag sets bypassPermissions
 // seed: flags_unsafe.json
 func TestParseUnsafeFlagSetsBypassPermissions(t *testing.T) {
+	t.Parallel()
 	args := []string{
 		"run",
 		"--unsafe",
@@ -136,6 +139,7 @@ func TestParseUnsafeFlagSetsBypassPermissions(t *testing.T) {
 
 // Scenario: Parse --mode flag sets explicit permission mode
 func TestParseModeFlagSetsExplicitPermissionMode(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "--mode", "plan", "Do something"}
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -149,6 +153,7 @@ func TestParseModeFlagSetsExplicitPermissionMode(t *testing.T) {
 
 // Scenario: Default working directory is current directory
 func TestDefaultWorkingDirectoryIsCurrentDirectory(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "Do something"}
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -162,6 +167,7 @@ func TestDefaultWorkingDirectoryIsCurrentDirectory(t *testing.T) {
 
 // Scenario: Default timeout comes from config
 func TestDefaultTimeoutComesFromConfig(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "Do something"}
 	configDefaultTimeout := 1800
 
@@ -185,6 +191,7 @@ func TestDefaultTimeoutComesFromConfig(t *testing.T) {
 
 // Scenario: Remaining arguments after flags are joined as prompt
 func TestRemainingArgumentsAfterFlagsJoinedAsPrompt(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "-d", "/tmp", "Fix", "the", "bug", "in", "main.go", "please"}
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -202,6 +209,7 @@ func TestRemainingArgumentsAfterFlagsJoinedAsPrompt(t *testing.T) {
 // Scenario: Non-existent directory returns error
 // seed: flags_bad_dir.json
 func TestNonExistentDirectoryReturnsError(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "-d", "/nonexistent/path", "Do something"}
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -224,6 +232,7 @@ func TestNonExistentDirectoryReturnsError(t *testing.T) {
 // Scenario: Non-numeric timeout returns error
 // seed: flags_bad_timeout.json
 func TestNonNumericTimeoutReturnsError(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "-t", "abc", "Do something"}
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -247,6 +256,7 @@ func TestNonNumericTimeoutReturnsError(t *testing.T) {
 
 // Scenario: Negative timeout returns error
 func TestNegativeTimeoutReturnsError(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "-t", "-5", "Do something"}
 	f, parseErr := cmd.ParseFlags(args[1:])
 	if parseErr != nil {
@@ -269,6 +279,7 @@ func TestNegativeTimeoutReturnsError(t *testing.T) {
 
 // Scenario: Zero timeout returns error
 func TestZeroTimeoutReturnsError(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "-t", "0", "Do something"}
 	f, parseErr := cmd.ParseFlags(args[1:])
 	if parseErr != nil {
@@ -294,6 +305,7 @@ func TestZeroTimeoutReturnsError(t *testing.T) {
 // Scenario: No prompt provided returns error
 // seed: flags_no_prompt.json
 func TestNoPromptProvidedReturnsError(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "-d", "/tmp"}
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -315,10 +327,12 @@ func TestNoPromptProvidedReturnsError(t *testing.T) {
 // Scenario Outline: Status command prints correct status word
 // seed: status_responses.json
 func TestStatusCommandPrintsCorrectStatusWordDone(t *testing.T) {
+	t.Parallel()
 	testStatusWord(t, "done", "job-20260227-100000-a1b2c3d4")
 }
 
 func TestStatusCommandPrintsCorrectStatusWordRunning(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-101500-e5f6a7b8"
@@ -343,18 +357,22 @@ func TestStatusCommandPrintsCorrectStatusWordRunning(t *testing.T) {
 }
 
 func TestStatusCommandPrintsCorrectStatusWordFailed(t *testing.T) {
+	t.Parallel()
 	testStatusWord(t, "failed", "job-20260227-102000-c9d0e1f2")
 }
 
 func TestStatusCommandPrintsCorrectStatusWordTimeout(t *testing.T) {
+	t.Parallel()
 	testStatusWord(t, "timeout", "job-20260227-094500-f7e8d9c0")
 }
 
 func TestStatusCommandPrintsCorrectStatusWordKilled(t *testing.T) {
+	t.Parallel()
 	testStatusWord(t, "killed", "job-20260227-103000-b5a6c7d8")
 }
 
 func TestStatusCommandPrintsCorrectStatusWordPermissionError(t *testing.T) {
+	t.Parallel()
 	testStatusWord(t, "permission_error", "job-20260227-104500-d9e0f1a2")
 }
 
@@ -386,6 +404,7 @@ func testStatusWord(t *testing.T, status, jobID string) {
 // Scenario: Status detects dead PID and updates to failed
 // seed: status_responses.json scenario "running_stale"
 func TestStatusDetectsDeadPIDAndUpdatesToFailed(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-101500-stale000"
@@ -416,6 +435,7 @@ func TestStatusDetectsDeadPIDAndUpdatesToFailed(t *testing.T) {
 // Scenario: Status confirms running job with live PID
 // seed: status_responses.json scenario "running"
 func TestStatusConfirmsRunningJobWithLivePID(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-101500-alive001"
@@ -442,6 +462,7 @@ func TestStatusConfirmsRunningJobWithLivePID(t *testing.T) {
 // Scenario: Status on non-existent job returns not_found
 // seed: status_responses.json scenario "not_found"
 func TestStatusOnNonExistentJobReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-999999-deadbeef"
@@ -466,6 +487,7 @@ func TestStatusOnNonExistentJobReturnsNotFound(t *testing.T) {
 // Scenario: Result on running job returns error
 // seed: result_on_running.json
 func TestResultOnRunningJobReturnsError(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100003-d4e5f6a7"
@@ -488,6 +510,7 @@ func TestResultOnRunningJobReturnsError(t *testing.T) {
 
 // Scenario: Result on queued job returns error
 func TestResultOnQueuedJobReturnsError(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100004-e5f6a7b8"
@@ -512,6 +535,7 @@ func TestResultOnQueuedJobReturnsError(t *testing.T) {
 
 // Scenario: Result on failed job prints stderr as warning
 func TestResultOnFailedJobPrintsStderrAsWarning(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100005-f6a7b8c9"
@@ -535,6 +559,7 @@ func TestResultOnFailedJobPrintsStderrAsWarning(t *testing.T) {
 
 // Scenario: Result on timed-out job prints stderr as warning
 func TestResultOnTimedOutJobPrintsStderrAsWarning(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100006-a7b8c9d0"
@@ -555,6 +580,7 @@ func TestResultOnTimedOutJobPrintsStderrAsWarning(t *testing.T) {
 
 // Scenario: Result on permission_error job prints stderr as warning
 func TestResultOnPermissionErrorJobPrintsStderrAsWarning(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100007-b8c9d0e1"
@@ -577,6 +603,7 @@ func TestResultOnPermissionErrorJobPrintsStderrAsWarning(t *testing.T) {
 
 // Scenario: Result prints stdout and deletes job directory
 func TestResultPrintsStdoutAndDeletesJobDirectory(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100008-c9d0e1f2"
@@ -610,6 +637,7 @@ func TestResultPrintsStdoutAndDeletesJobDirectory(t *testing.T) {
 
 // Scenario: Result returns exit code 0 on success
 func TestResultReturnsExitCode0OnSuccess(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100009-d0e1f2a3"
@@ -628,6 +656,7 @@ func TestResultReturnsExitCode0OnSuccess(t *testing.T) {
 
 // Scenario: Result returns exit code 3 if job not found
 func TestResultReturnsExitCode3IfJobNotFound(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-999999-deadbeef"
@@ -647,6 +676,7 @@ func TestResultReturnsExitCode3IfJobNotFound(t *testing.T) {
 
 // Scenario: Result on already-deleted job returns not_found
 func TestResultOnAlreadyDeletedJobReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100010-e1f2a3b4"
@@ -679,6 +709,7 @@ func TestResultOnAlreadyDeletedJobReturnsNotFound(t *testing.T) {
 
 // Scenario: Empty stdout.txt prints nothing
 func TestEmptyStdoutTxtPrintsNothing(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100011-f2a3b4c5"
@@ -701,6 +732,7 @@ func TestEmptyStdoutTxtPrintsNothing(t *testing.T) {
 
 // Scenario: Status called concurrently with execution completing
 func TestStatusCalledConcurrentlyWithExecutionCompleting(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100012-a3b4c5d6"

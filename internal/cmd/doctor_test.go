@@ -16,6 +16,7 @@ import (
 // TestDoctorCmdOutputFormat verifies that DoctorCmd writes all expected check
 // names to the output writer.
 func TestDoctorCmdOutputFormat(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	opts := cmd.DoctorOptions{
 		// Use a non-existent endpoint and very short timeout to avoid real network calls.
@@ -38,6 +39,7 @@ func TestDoctorCmdOutputFormat(t *testing.T) {
 // TestDoctorCmdWithAPIKey creates a temp file with an API key and passes its
 // path in DoctorOptions.APIKeyPath, verifying that the api_key check shows "OK".
 func TestDoctorCmdWithAPIKey(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	keyPath := filepath.Join(dir, "api_key")
 	if err := os.WriteFile(keyPath, []byte("sk-test-key"), 0o600); err != nil {
@@ -70,6 +72,7 @@ func TestDoctorCmdWithAPIKey(t *testing.T) {
 // TestDoctorCmdWithoutAPIKey passes a non-existent path and verifies that
 // the api_key check shows "FAIL".
 func TestDoctorCmdWithoutAPIKey(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	opts := cmd.DoctorOptions{
 		APIKeyPath:  "/nonexistent/path/to/api_key_file",
@@ -95,6 +98,7 @@ func TestDoctorCmdWithoutAPIKey(t *testing.T) {
 // TestDoctorCmdModelsDisplay passes custom model names and verifies they
 // appear in the output.
 func TestDoctorCmdModelsDisplay(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	opts := cmd.DoctorOptions{
 		OpusModel:   "my-opus-model",
@@ -118,6 +122,7 @@ func TestDoctorCmdModelsDisplay(t *testing.T) {
 // TestDoctorCmdSlotsDisplay creates a temp subagents dir with a running job
 // and verifies the slot count appears in output.
 func TestDoctorCmdSlotsDisplay(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	// Create a running job directory.
@@ -151,6 +156,7 @@ func TestDoctorCmdSlotsDisplay(t *testing.T) {
 // TestConfigShowCmdDefaults verifies that ConfigShowCmd with no TOML and no
 // env vars displays all expected config keys.
 func TestConfigShowCmdDefaults(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	opts := cmd.ConfigShowOptions{
 		EnvGetenv: func(string) string { return "" }, // no env vars
@@ -175,6 +181,7 @@ func TestConfigShowCmdDefaults(t *testing.T) {
 // TestConfigShowCmdWithTOML creates a temp dir with glm.toml and verifies
 // that config values from the file show "(config)" as the source annotation.
 func TestConfigShowCmdWithTOML(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	toml := `model = "glm-4.9"
 `
@@ -203,6 +210,7 @@ func TestConfigShowCmdWithTOML(t *testing.T) {
 // TestConfigShowCmdWithEnv passes a custom EnvGetenv returning a GLM_MODEL
 // value and verifies that the model shows "(env)" as the source annotation.
 func TestConfigShowCmdWithEnv(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	opts := cmd.ConfigShowOptions{
 		EnvGetenv: func(key string) string {
@@ -230,6 +238,7 @@ func TestConfigShowCmdWithEnv(t *testing.T) {
 // TestConfigSetCmdHappyPath sets a known config key and verifies glm.toml
 // is updated correctly.
 func TestConfigSetCmdHappyPath(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	opts := cmd.ConfigSetOptions{
 		ConfigDir: dir,
@@ -256,6 +265,7 @@ func TestConfigSetCmdHappyPath(t *testing.T) {
 // TestConfigSetCmdUnknownKey verifies that setting an unknown key returns
 // an err:user error.
 func TestConfigSetCmdUnknownKey(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	opts := cmd.ConfigSetOptions{
 		ConfigDir: dir,
@@ -274,6 +284,7 @@ func TestConfigSetCmdUnknownKey(t *testing.T) {
 // TestConfigSetCmdInvalidPermissionMode verifies that setting an invalid
 // permission_mode value returns an error.
 func TestConfigSetCmdInvalidPermissionMode(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	opts := cmd.ConfigSetOptions{
 		ConfigDir: dir,
@@ -292,6 +303,7 @@ func TestConfigSetCmdInvalidPermissionMode(t *testing.T) {
 // TestConfigSetCmdAPIRPSIsUnknown verifies that api_rps is no longer a
 // recognized config key (the global concurrency limit was removed).
 func TestConfigSetCmdAPIRPSIsUnknown(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	opts := cmd.ConfigSetOptions{
 		ConfigDir: dir,
@@ -313,6 +325,7 @@ func TestConfigSetCmdAPIRPSIsUnknown(t *testing.T) {
 // TestConfigSetCmdCreatesDirectory verifies that ConfigSetCmd creates the
 // config directory if it does not exist.
 func TestConfigSetCmdCreatesDirectory(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	// Use a nested directory that doesn't exist yet.
 	dir := filepath.Join(base, "nested", "config")

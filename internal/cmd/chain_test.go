@@ -64,6 +64,10 @@ func chainFlags(dir string, timeout int, model string, continueOnError bool, pro
 // with three prompts creates 3 jobs in strict sequence.
 // ContinueOnError=true ensures all steps run regardless of claude outcome.
 func TestChainExecutesThreePromptsSequentially(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -94,6 +98,10 @@ func TestChainExecutesThreePromptsSequentially(t *testing.T) {
 // "glm chain" with three prompts, three separate job directories exist and
 // each contains a status file.
 func TestEachChainStepProducesSeparateJobDirectory(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -129,6 +137,10 @@ func TestEachChainStepProducesSeparateJobDirectory(t *testing.T) {
 // BuildChainPrompt unit tests). ChainCmd passes the injection through correctly
 // when all 3 steps run.
 func TestChainPassesPreviousResultToNextStep(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -161,6 +173,10 @@ func TestChainPassesPreviousResultToNextStep(t *testing.T) {
 // A non-existent workdir causes claude.Execute to return exit code 1
 // immediately (before attempting API calls), guaranteeing a fast failure.
 func TestChainStopsAtFirstFailedStep(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -191,6 +207,10 @@ func TestChainStopsAtFirstFailedStep(t *testing.T) {
 // TestChainContinuesOnErrorWhenFlagIsSet verifies that with --continue-on-error,
 // all 3 steps run even when steps fail (non-existent workdir forces failures).
 func TestChainContinuesOnErrorWhenFlagIsSet(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -220,6 +240,10 @@ func TestChainContinuesOnErrorWhenFlagIsSet(t *testing.T) {
 // TestContinueOnErrorStillInjectsStdoutFromFailedStep verifies that even when
 // steps fail, the chain proceeds to the next step (injection logic still runs).
 func TestContinueOnErrorStillInjectsStdoutFromFailedStep(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -250,6 +274,10 @@ func TestContinueOnErrorStillInjectsStdoutFromFailedStep(t *testing.T) {
 // TestChainReturnsFinalJobStdout verifies that the ChainResult.FinalStdout
 // contains the last step's output (consistent with last job's stdout.txt).
 func TestChainReturnsFinalJobStdout(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -280,6 +308,10 @@ func TestChainReturnsFinalJobStdout(t *testing.T) {
 // TestIntermediateJobDirectoriesArePreservedAfterChain verifies that all 3
 // job directories still exist on disk after the chain completes.
 func TestIntermediateJobDirectoriesArePreservedAfterChain(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -309,6 +341,10 @@ func TestIntermediateJobDirectoriesArePreservedAfterChain(t *testing.T) {
 // "[N/M] Running step N..." line on stderr.
 // ContinueOnError=true ensures all 3 steps and their progress lines appear.
 func TestChainPrintsProgressToStderr(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -338,6 +374,10 @@ func TestChainPrintsProgressToStderr(t *testing.T) {
 // TestChainWithTwoStepsPrintsCorrectProgress verifies the progress format
 // when only 2 prompts are given.
 func TestChainWithTwoStepsPrintsCorrectProgress(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -368,6 +408,10 @@ func TestChainWithTwoStepsPrintsCorrectProgress(t *testing.T) {
 // TestChainWithSinglePromptBehavesLikeGlmRun verifies that a single-prompt
 // chain runs, prints "[1/1] Running step 1..." to stderr, and executes 1 step.
 func TestChainWithSinglePromptBehavesLikeGlmRun(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -394,6 +438,10 @@ func TestChainWithSinglePromptBehavesLikeGlmRun(t *testing.T) {
 // TestChainHandlesEmptyStdoutFromAStep verifies that the chain handles steps
 // that produce empty stdout by still proceeding to subsequent steps.
 func TestChainHandlesEmptyStdoutFromAStep(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -424,6 +472,10 @@ func TestChainHandlesEmptyStdoutFromAStep(t *testing.T) {
 // every step fails and --continue-on-error is set, all 3 steps are executed
 // and the exit code is non-zero.
 func TestAllStepsFailWithContinueOnErrorReturnsNonZeroExit(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -455,6 +507,10 @@ func TestAllStepsFailWithContinueOnErrorReturnsNonZeroExit(t *testing.T) {
 // call uses the correct working directory. We verify this via observable
 // behavior: each step gets a separate job dir (flags were forwarded).
 func TestChainPassesDirectoryFlagToEachStep(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -478,6 +534,10 @@ func TestChainPassesDirectoryFlagToEachStep(t *testing.T) {
 // TestChainPassesTimeoutFlagToEachStep verifies that a chain with a non-default
 // timeout runs and all steps are attempted (timeout flag forwarded correctly).
 func TestChainPassesTimeoutFlagToEachStep(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -502,6 +562,10 @@ func TestChainPassesTimeoutFlagToEachStep(t *testing.T) {
 // TestChainPassesModelFlagToEachStep verifies that a chain with a custom model
 // runs and all steps are attempted (model flag forwarded correctly).
 func TestChainPassesModelFlagToEachStep(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -529,6 +593,10 @@ func TestChainPassesModelFlagToEachStep(t *testing.T) {
 // values.  We use a known constraint ("readonly") and a custom system prompt;
 // ContinueOnError=true so both steps always run.
 func TestChainPropagatesSystemPromptAndConstraintsToEachStep(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -564,6 +632,7 @@ func TestChainPropagatesSystemPromptAndConstraintsToEachStep(t *testing.T) {
 
 // TestBuildChainPromptFormat verifies the exact format of the injected prompt.
 func TestBuildChainPromptFormat(t *testing.T) {
+	t.Parallel()
 	prev := "Found 3 issues: SQL injection in login.ts, XSS in profile.ts, missing CSRF token"
 	next := "Based on the analysis, write fixes for the critical issues found"
 
@@ -591,6 +660,7 @@ func TestBuildChainPromptFormat(t *testing.T) {
 // TestBuildChainPromptWithEmptyPrevStdout verifies that an empty previous
 // stdout still produces the correct structure.
 func TestBuildChainPromptWithEmptyPrevStdout(t *testing.T) {
+	t.Parallel()
 	got := cmd.BuildChainPrompt("", "Verify no .tmp files remain")
 
 	if !strings.Contains(got, "Previous agent result:") {
@@ -610,6 +680,7 @@ func TestBuildChainPromptWithEmptyPrevStdout(t *testing.T) {
 // a plain prompt list into ChainStep entries with matching Prompts and
 // nil Validate/Retry fields.
 func TestChainStepsFromPrompts(t *testing.T) {
+	t.Parallel()
 	prompts := []string{"a", "b"}
 	steps := cmd.ChainStepsFromPrompts(prompts)
 
@@ -633,6 +704,10 @@ func TestChainStepsFromPrompts(t *testing.T) {
 // TestChainCmd_StepsFieldUsed verifies that when ChainFlags.Steps is set
 // (instead of Prompts), the chain uses Steps for execution.
 func TestChainCmd_StepsFieldUsed(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -661,6 +736,10 @@ func TestChainCmd_StepsFieldUsed(t *testing.T) {
 // TestChainCmd_ValidationPasses verifies that a step with a validation rule
 // that matches the output completes normally and does not stop the chain.
 func TestChainCmd_ValidationPasses(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -693,6 +772,10 @@ func TestChainCmd_ValidationPasses(t *testing.T) {
 // validation fails and ContinueOnError is false, the chain stops and
 // remaining steps are skipped.
 func TestChainCmd_ValidationFails_StopsChain(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -729,6 +812,10 @@ func TestChainCmd_ValidationFails_StopsChain(t *testing.T) {
 // validation fails but ContinueOnError is true, the chain continues to
 // the next step.
 func TestChainCmd_ValidationFails_ContinueOnError(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer
@@ -787,6 +874,10 @@ func readSlotCounter(t *testing.T, subagentsRoot string) int {
 //   - After ChainCmd returns, the counter MUST be back to 0 regardless of
 //     how many attempts ran or how many steps succeeded/failed.
 func TestChainCmd_SlotReleasedAfterEachAttempt(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	root := makeSubagentsRoot(t)
 	cfg := makeTestConfig(t)
 	var stdout, stderr bytes.Buffer

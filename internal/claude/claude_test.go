@@ -1084,6 +1084,9 @@ func TestBashCommandLongerThan80CharsIsTruncatedInChangelog(t *testing.T) {
 // TestExecute_NilBus_NoPanic verifies that Execute does not panic when the
 // Bus field is nil (the default).
 func TestExecute_NilBus_NoPanic(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	dir := t.TempDir()
 	cfg := claude.Config{
 		Prompt:  "echo test",

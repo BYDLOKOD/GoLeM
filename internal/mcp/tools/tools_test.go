@@ -59,6 +59,7 @@ func createTestJob(t *testing.T, tc *ToolContext, status job.Status) string {
 // --- ToolError tests ---
 
 func TestToolError_Error(t *testing.T) {
+	t.Parallel()
 	err := NewToolError("err:user", "something went wrong")
 	expected := "err:user something went wrong"
 	if err.Error() != expected {
@@ -69,6 +70,7 @@ func TestToolError_Error(t *testing.T) {
 // --- parseInput / marshalOutput helpers ---
 
 func TestParseInput_NilRaw(t *testing.T) {
+	t.Parallel()
 	var target struct{}
 	err := parseInput(nil, &target)
 	if err == nil {
@@ -84,6 +86,7 @@ func TestParseInput_NilRaw(t *testing.T) {
 }
 
 func TestParseInput_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	var target struct{}
 	err := parseInput(json.RawMessage(`not json`), &target)
 	if err == nil {
@@ -92,6 +95,7 @@ func TestParseInput_InvalidJSON(t *testing.T) {
 }
 
 func TestMarshalOutput_Roundtrip(t *testing.T) {
+	t.Parallel()
 	output := RunOutput{
 		Stdout:   "hello",
 		Stderr:   "",
@@ -119,6 +123,7 @@ func TestMarshalOutput_Roundtrip(t *testing.T) {
 // --- ToolContext tests ---
 
 func TestNewToolContext_Defaults(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{SubagentDir: "/tmp/subagents"}
 	tc := NewToolContext(cfg, "", "")
 	if tc.SubagentsRoot != "/tmp/subagents" {
@@ -130,6 +135,7 @@ func TestNewToolContext_Defaults(t *testing.T) {
 }
 
 func TestNewToolContext_Explicit(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{SubagentDir: "/default"}
 	tc := NewToolContext(cfg, "/explicit/root", "my-project")
 	if tc.SubagentsRoot != "/explicit/root" {
@@ -143,6 +149,7 @@ func TestNewToolContext_Explicit(t *testing.T) {
 // --- RunHandler tests ---
 
 func TestRunHandler_MissingPrompt(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := RunHandler(tc)
 
@@ -161,6 +168,7 @@ func TestRunHandler_MissingPrompt(t *testing.T) {
 }
 
 func TestRunHandler_NilInput(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := RunHandler(tc)
 
@@ -171,6 +179,7 @@ func TestRunHandler_NilInput(t *testing.T) {
 }
 
 func TestRunHandler_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := RunHandler(tc)
 
@@ -181,6 +190,7 @@ func TestRunHandler_InvalidJSON(t *testing.T) {
 }
 
 func TestRunHandler_ParamMapping(t *testing.T) {
+	t.Parallel()
 	// Verify the handler correctly maps JSON params to RunInput fields.
 	params := json.RawMessage(`{"prompt":"hello","model":"glm-4","timeout":60}`)
 	var input RunInput
@@ -205,6 +215,10 @@ func TestRunHandler_ParamMapping(t *testing.T) {
 // the stub cmd.RunCmd returns success even with no pre-created job dirs, while
 // cmd.ExecuteJob attempts to run claude and returns an error when it fails.
 func TestRunHandler_CallsExecuteJob(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	tc := newTestToolContext(t)
 	h := RunHandler(tc)
 
@@ -237,6 +251,10 @@ func TestRunHandler_CallsExecuteJob(t *testing.T) {
 // TestRunHandler_DefaultDirApplied verifies that an empty dir input is
 // replaced with "." before params are passed downstream.
 func TestRunHandler_DefaultDirApplied(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	tc := newTestToolContext(t)
 	h := RunHandler(tc)
 
@@ -258,6 +276,7 @@ func TestRunHandler_DefaultDirApplied(t *testing.T) {
 // --- StartHandler tests ---
 
 func TestStartHandler_MissingPrompt(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := StartHandler(tc)
 
@@ -275,6 +294,10 @@ func TestStartHandler_MissingPrompt(t *testing.T) {
 // The background goroutine runs asynchronously. We wait for it to reach a
 // terminal state before the test ends to avoid racing with t.TempDir cleanup.
 func TestStartHandler_ReturnsJobIDImmediately(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	tc := newTestToolContext(t)
 	h := StartHandler(tc)
 
@@ -322,6 +345,7 @@ func TestStartHandler_ReturnsJobIDImmediately(t *testing.T) {
 // --- StatusHandler tests ---
 
 func TestStatusHandler_MissingJobID(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := StatusHandler(tc)
 
@@ -333,6 +357,7 @@ func TestStatusHandler_MissingJobID(t *testing.T) {
 }
 
 func TestStatusHandler_NotFound(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := StatusHandler(tc)
 
@@ -351,6 +376,7 @@ func TestStatusHandler_NotFound(t *testing.T) {
 }
 
 func TestStatusHandler_QueuedJob(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	jobID := createTestJob(t, tc, job.StatusQueued)
 	h := StatusHandler(tc)
@@ -371,6 +397,7 @@ func TestStatusHandler_QueuedJob(t *testing.T) {
 }
 
 func TestStatusHandler_DoneJob(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	jobID := createTestJob(t, tc, job.StatusDone)
 	h := StatusHandler(tc)
@@ -393,6 +420,7 @@ func TestStatusHandler_DoneJob(t *testing.T) {
 // --- ResultHandler tests ---
 
 func TestResultHandler_MissingJobID(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := ResultHandler(tc)
 
@@ -404,6 +432,7 @@ func TestResultHandler_MissingJobID(t *testing.T) {
 }
 
 func TestResultHandler_NotFound(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := ResultHandler(tc)
 
@@ -415,6 +444,7 @@ func TestResultHandler_NotFound(t *testing.T) {
 }
 
 func TestResultHandler_StillRunning(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	// Create a job with "running" status and a valid PID (our own).
 	jobID := createTestJob(t, tc, job.StatusRunning)
@@ -441,6 +471,7 @@ func TestResultHandler_StillRunning(t *testing.T) {
 }
 
 func TestResultHandler_DoneJob(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	jobID := createTestJob(t, tc, job.StatusDone)
 
@@ -473,6 +504,7 @@ func TestResultHandler_DoneJob(t *testing.T) {
 // --- ListHandler tests ---
 
 func TestListHandler_Empty(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := ListHandler(tc)
 
@@ -491,6 +523,7 @@ func TestListHandler_Empty(t *testing.T) {
 }
 
 func TestListHandler_WithJobs(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 
 	// Create two jobs.
@@ -533,6 +566,7 @@ func TestListHandler_WithJobs(t *testing.T) {
 // --- KillHandler tests ---
 
 func TestKillHandler_MissingJobID(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := KillHandler(tc)
 
@@ -544,6 +578,7 @@ func TestKillHandler_MissingJobID(t *testing.T) {
 }
 
 func TestKillHandler_NotFound(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := KillHandler(tc)
 
@@ -562,6 +597,7 @@ func TestKillHandler_NotFound(t *testing.T) {
 }
 
 func TestKillHandler_NotRunning(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	jobID := createTestJob(t, tc, job.StatusDone)
 	h := KillHandler(tc)
@@ -583,6 +619,7 @@ func TestKillHandler_NotRunning(t *testing.T) {
 // --- ChainHandler tests ---
 
 func TestChainHandler_TooFewPrompts(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := ChainHandler(tc)
 
@@ -601,6 +638,7 @@ func TestChainHandler_TooFewPrompts(t *testing.T) {
 }
 
 func TestChainHandler_NilInput(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := ChainHandler(tc)
 
@@ -611,6 +649,10 @@ func TestChainHandler_NilInput(t *testing.T) {
 }
 
 func TestChainHandler_Success(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	tc := newTestToolContext(t)
 	h := ChainHandler(tc)
 
@@ -645,6 +687,7 @@ func TestChainHandler_Success(t *testing.T) {
 // --- ChainInputStep tests ---
 
 func TestChainInputStep_Unmarshal(t *testing.T) {
+	t.Parallel()
 	raw := `{
 		"steps": [
 			{
@@ -699,6 +742,7 @@ func TestChainInputStep_Unmarshal(t *testing.T) {
 }
 
 func TestChainHandler_StepsField_TooFewSteps(t *testing.T) {
+	t.Parallel()
 	tc := newTestToolContext(t)
 	h := ChainHandler(tc)
 
@@ -717,6 +761,7 @@ func TestChainHandler_StepsField_TooFewSteps(t *testing.T) {
 }
 
 func TestChainHandler_StepsField_Conversion(t *testing.T) {
+	t.Parallel()
 	raw := `{
 		"steps": [
 			{
@@ -756,6 +801,10 @@ func TestChainHandler_StepsField_Conversion(t *testing.T) {
 }
 
 func TestChainHandler_StepsField_ExecutesChain(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	tc := newTestToolContext(t)
 	h := ChainHandler(tc)
 
@@ -788,6 +837,7 @@ func TestChainHandler_StepsField_ExecutesChain(t *testing.T) {
 // --- parseListOutput helper ---
 
 func TestParseListOutput_Empty(t *testing.T) {
+	t.Parallel()
 	result := parseListOutput("")
 	if result != nil {
 		t.Errorf("expected nil, got %v", result)
@@ -795,6 +845,7 @@ func TestParseListOutput_Empty(t *testing.T) {
 }
 
 func TestParseListOutput_HeaderOnly(t *testing.T) {
+	t.Parallel()
 	result := parseListOutput("JOB_ID  STATUS  STARTED\n")
 	if result != nil {
 		t.Errorf("expected nil, got %v", result)
@@ -802,6 +853,7 @@ func TestParseListOutput_HeaderOnly(t *testing.T) {
 }
 
 func TestParseListOutput_WithEntries(t *testing.T) {
+	t.Parallel()
 	input := fmt.Sprintf(
 		"%-44s  %-18s  %s\n%-44s  %-18s  %s\n%-44s  %-18s  %s\n",
 		"JOB_ID", "STATUS", "STARTED",
@@ -826,6 +878,7 @@ func TestParseListOutput_WithEntries(t *testing.T) {
 // --- Definition functions tests ---
 
 func TestRunDefinition_HasRequiredPrompt(t *testing.T) {
+	t.Parallel()
 	schema := RunDefinition()
 	required, ok := schema["required"].([]string)
 	if !ok {
@@ -837,6 +890,7 @@ func TestRunDefinition_HasRequiredPrompt(t *testing.T) {
 }
 
 func TestStartDefinition_HasRequiredPrompt(t *testing.T) {
+	t.Parallel()
 	schema := StartDefinition()
 	required, ok := schema["required"].([]string)
 	if !ok {
@@ -848,6 +902,7 @@ func TestStartDefinition_HasRequiredPrompt(t *testing.T) {
 }
 
 func TestStatusDefinition_HasRequiredJobID(t *testing.T) {
+	t.Parallel()
 	schema := StatusDefinition()
 	required, ok := schema["required"].([]string)
 	if !ok {
@@ -859,6 +914,7 @@ func TestStatusDefinition_HasRequiredJobID(t *testing.T) {
 }
 
 func TestResultDefinition_HasRequiredJobID(t *testing.T) {
+	t.Parallel()
 	schema := ResultDefinition()
 	required, ok := schema["required"].([]string)
 	if !ok {
@@ -870,6 +926,7 @@ func TestResultDefinition_HasRequiredJobID(t *testing.T) {
 }
 
 func TestKillDefinition_HasRequiredJobID(t *testing.T) {
+	t.Parallel()
 	schema := KillDefinition()
 	required, ok := schema["required"].([]string)
 	if !ok {
@@ -885,6 +942,7 @@ func TestKillDefinition_HasRequiredJobID(t *testing.T) {
 // either `prompts` OR `steps`, and the schema must reflect that contract so
 // strict client-side validators don't reject `steps`-only inputs.
 func TestChainDefinition_AcceptsEitherPromptsOrSteps(t *testing.T) {
+	t.Parallel()
 	schema := ChainDefinition()
 
 	// Top-level `required` must not contain "prompts" alone — that would
@@ -925,6 +983,7 @@ func TestChainDefinition_AcceptsEitherPromptsOrSteps(t *testing.T) {
 }
 
 func TestListDefinition_NoRequiredFields(t *testing.T) {
+	t.Parallel()
 	schema := ListDefinition()
 	_, hasRequired := schema["required"]
 	if hasRequired {
@@ -937,6 +996,7 @@ func TestListDefinition_NoRequiredFields(t *testing.T) {
 // TestRunInput_SystemPromptAndConstraintsFields verifies RunInput exposes
 // system_prompt and constraints via JSON serialization.
 func TestRunInput_SystemPromptAndConstraintsFields(t *testing.T) {
+	t.Parallel()
 	raw := `{"prompt":"task","system_prompt":"be careful","constraints":["readonly","plan-first"]}`
 	var input RunInput
 	if err := json.Unmarshal([]byte(raw), &input); err != nil {
@@ -959,6 +1019,7 @@ func TestRunInput_SystemPromptAndConstraintsFields(t *testing.T) {
 // TestStartInput_SystemPromptAndConstraintsFields verifies StartInput exposes
 // system_prompt and constraints via JSON serialization.
 func TestStartInput_SystemPromptAndConstraintsFields(t *testing.T) {
+	t.Parallel()
 	raw := `{"prompt":"task","system_prompt":"stay focused","constraints":["no-create"]}`
 	var input StartInput
 	if err := json.Unmarshal([]byte(raw), &input); err != nil {
@@ -975,6 +1036,7 @@ func TestStartInput_SystemPromptAndConstraintsFields(t *testing.T) {
 // TestChainInput_SystemPromptAndConstraintsFields verifies ChainInput exposes
 // system_prompt and constraints via JSON serialization.
 func TestChainInput_SystemPromptAndConstraintsFields(t *testing.T) {
+	t.Parallel()
 	raw := `{"prompts":["a","b"],"system_prompt":"custom","constraints":["scope:/tmp"]}`
 	var input ChainInput
 	if err := json.Unmarshal([]byte(raw), &input); err != nil {
@@ -991,6 +1053,7 @@ func TestChainInput_SystemPromptAndConstraintsFields(t *testing.T) {
 // TestRunInput_OmitEmptySystemPrompt verifies that omitempty omits the fields
 // when they are zero values.
 func TestRunInput_OmitEmptySystemPrompt(t *testing.T) {
+	t.Parallel()
 	input := RunInput{Prompt: "task"}
 	data, err := json.Marshal(input)
 	if err != nil {
@@ -1008,6 +1071,7 @@ func TestRunInput_OmitEmptySystemPrompt(t *testing.T) {
 // TestRunDefinition_HasSystemPromptAndConstraints verifies the glm_run schema
 // includes system_prompt and constraints properties.
 func TestRunDefinition_HasSystemPromptAndConstraints(t *testing.T) {
+	t.Parallel()
 	schema := RunDefinition()
 	props, ok := schema["properties"].(map[string]any)
 	if !ok {
@@ -1024,6 +1088,7 @@ func TestRunDefinition_HasSystemPromptAndConstraints(t *testing.T) {
 // TestStartDefinition_HasSystemPromptAndConstraints verifies the glm_start
 // schema includes system_prompt and constraints properties.
 func TestStartDefinition_HasSystemPromptAndConstraints(t *testing.T) {
+	t.Parallel()
 	schema := StartDefinition()
 	props, ok := schema["properties"].(map[string]any)
 	if !ok {
@@ -1040,6 +1105,7 @@ func TestStartDefinition_HasSystemPromptAndConstraints(t *testing.T) {
 // TestChainDefinition_HasSystemPromptAndConstraints verifies the glm_chain
 // schema includes system_prompt and constraints properties.
 func TestChainDefinition_HasSystemPromptAndConstraints(t *testing.T) {
+	t.Parallel()
 	schema := ChainDefinition()
 	props, ok := schema["properties"].(map[string]any)
 	if !ok {
@@ -1060,6 +1126,10 @@ func TestChainDefinition_HasSystemPromptAndConstraints(t *testing.T) {
 // err:user code would mean input was rejected — not what we want.
 // This test confirms that providing system_prompt does not cause a user error.
 func TestRunHandler_SystemPromptFromInput(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	tc := newTestToolContext(t)
 	h := RunHandler(tc)
 
@@ -1083,6 +1153,10 @@ func TestRunHandler_SystemPromptFromInput(t *testing.T) {
 // system_prompt, the config default (if any) is used. We confirm by inspecting
 // that a non-empty config SystemPrompt does not produce a user error.
 func TestRunHandler_SystemPromptDefaultFromConfig(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	tc := newTestToolContext(t)
 	tc.Cfg.SystemPrompt = "default system prompt from config"
 	h := RunHandler(tc)
@@ -1104,6 +1178,10 @@ func TestRunHandler_SystemPromptDefaultFromConfig(t *testing.T) {
 // TestChainHandler_SystemPromptFromInput verifies that ChainHandler propagates
 // system_prompt and constraints from input into cmd.ChainFlags.
 func TestChainHandler_SystemPromptFromInput(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	tc := newTestToolContext(t)
 	h := ChainHandler(tc)
 

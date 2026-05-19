@@ -8,6 +8,7 @@ import (
 )
 
 func TestSelectModelAutoLight(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		SonnetModel: "default-model",
 		Routing: config.RoutingConfig{
@@ -24,6 +25,7 @@ func TestSelectModelAutoLight(t *testing.T) {
 }
 
 func TestSelectModelAutoHeavy(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		SonnetModel: "default-model",
 		Routing: config.RoutingConfig{
@@ -40,6 +42,7 @@ func TestSelectModelAutoHeavy(t *testing.T) {
 }
 
 func TestSelectModelAutoMedium(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		SonnetModel: "default-model",
 		Routing: config.RoutingConfig{
@@ -56,6 +59,7 @@ func TestSelectModelAutoMedium(t *testing.T) {
 }
 
 func TestSelectModelExplicitTier(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		SonnetModel: "default-model",
 		Routing: config.RoutingConfig{
@@ -72,6 +76,7 @@ func TestSelectModelExplicitTier(t *testing.T) {
 }
 
 func TestSelectModelNoRoutingConfig(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		SonnetModel: "default-model",
 		Routing:     config.RoutingConfig{}, // empty
@@ -84,6 +89,7 @@ func TestSelectModelNoRoutingConfig(t *testing.T) {
 }
 
 func TestSelectModelPartialRoutingConfig(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		SonnetModel: "default-model",
 		OpusModel:   "opus-model",
@@ -113,6 +119,7 @@ func TestSelectModelPartialRoutingConfig(t *testing.T) {
 }
 
 func TestSelectModelFlagModelOverridesTier(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		SonnetModel: "default-model",
 		Routing: config.RoutingConfig{
@@ -128,6 +135,7 @@ func TestSelectModelFlagModelOverridesTier(t *testing.T) {
 }
 
 func TestSelectModelAutoTierUsesEstimator(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		SonnetModel: "default-model",
 		Routing: config.RoutingConfig{
@@ -145,6 +153,7 @@ func TestSelectModelAutoTierUsesEstimator(t *testing.T) {
 }
 
 func TestTierToRouterTier(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		flag string
 		want router.Tier

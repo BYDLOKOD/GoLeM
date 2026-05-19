@@ -22,6 +22,10 @@ func helperCreateSlotManager(t *testing.T, subagentsRoot string, apiRPS int) *sl
 }
 
 func TestExecuteJob_UsesPreCreatedJob(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	dir := t.TempDir()
 	subagentsRoot := filepath.Join(dir, "subagents")
 	if err := os.MkdirAll(subagentsRoot, 0o755); err != nil {
@@ -78,6 +82,10 @@ func TestExecuteJob_UsesPreCreatedJob(t *testing.T) {
 }
 
 func TestExecuteJob_GeneratesNewJobIDWhenEmpty(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	dir := t.TempDir()
 	subagentsRoot := filepath.Join(dir, "subagents")
 	if err := os.MkdirAll(subagentsRoot, 0o755); err != nil {
@@ -128,6 +136,10 @@ func TestExecuteJob_GeneratesNewJobIDWhenEmpty(t *testing.T) {
 }
 
 func TestExecuteJob_AutoDeleteRemovesJobDir(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	dir := t.TempDir()
 	subagentsRoot := filepath.Join(dir, "subagents")
 	if err := os.MkdirAll(subagentsRoot, 0o755); err != nil {
@@ -179,6 +191,10 @@ func TestExecuteJob_AutoDeleteRemovesJobDir(t *testing.T) {
 }
 
 func TestExecuteJob_ReleasesSlotOnReturn(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	dir := t.TempDir()
 	subagentsRoot := filepath.Join(dir, "subagents")
 	if err := os.MkdirAll(subagentsRoot, 0o755); err != nil {
@@ -229,6 +245,10 @@ func TestExecuteJob_ReleasesSlotOnReturn(t *testing.T) {
 }
 
 func TestExecuteJob_WritesPIDForNewJob(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	dir := t.TempDir()
 	subagentsRoot := filepath.Join(dir, "subagents")
 	if err := os.MkdirAll(subagentsRoot, 0o755); err != nil {
@@ -276,6 +296,10 @@ func TestExecuteJob_WritesPIDForNewJob(t *testing.T) {
 }
 
 func TestExecuteJob_SkipsPIDForPreCreatedJob(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	dir := t.TempDir()
 	subagentsRoot := filepath.Join(dir, "subagents")
 	if err := os.MkdirAll(subagentsRoot, 0o755); err != nil {
@@ -329,6 +353,10 @@ func TestExecuteJob_SkipsPIDForPreCreatedJob(t *testing.T) {
 }
 
 func TestExecuteJob_StatusSetOnCompletion(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
 	dir := t.TempDir()
 	subagentsRoot := filepath.Join(dir, "subagents")
 	if err := os.MkdirAll(subagentsRoot, 0o755); err != nil {
@@ -381,6 +409,7 @@ func TestExecuteJob_StatusSetOnCompletion(t *testing.T) {
 }
 
 func TestBuildClaudeConfig_DefaultModels(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		OpusModel:       "opus-1",
 		SonnetModel:     "sonnet-1",
@@ -420,6 +449,7 @@ func TestBuildClaudeConfig_DefaultModels(t *testing.T) {
 }
 
 func TestBuildClaudeConfig_FlagModelOverridesAll(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		OpusModel:   "opus-1",
 		SonnetModel: "sonnet-1",
@@ -450,6 +480,7 @@ func TestBuildClaudeConfig_FlagModelOverridesAll(t *testing.T) {
 }
 
 func TestBuildClaudeConfig_PerSlotOverrideTakesPriority(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		OpusModel:   "opus-1",
 		SonnetModel: "sonnet-1",
@@ -482,6 +513,7 @@ func TestBuildClaudeConfig_PerSlotOverrideTakesPriority(t *testing.T) {
 }
 
 func TestBuildClaudeConfig_FlagPermissionModeOverride(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		PermissionMode: "default",
 		OpusModel:      "m",
@@ -507,6 +539,7 @@ func TestBuildClaudeConfig_FlagPermissionModeOverride(t *testing.T) {
 }
 
 func TestBuildClaudeConfig_EffortPassthrough(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		OpusModel:   "m",
 		SonnetModel: "m",
@@ -531,6 +564,7 @@ func TestBuildClaudeConfig_EffortPassthrough(t *testing.T) {
 }
 
 func TestBuildClaudeConfig_ExcludeDynamicSectionsPassthrough(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		OpusModel:              "m",
 		SonnetModel:            "m",
@@ -555,6 +589,7 @@ func TestBuildClaudeConfig_ExcludeDynamicSectionsPassthrough(t *testing.T) {
 }
 
 func TestBuildClaudeConfig_ExcludeDynamicSectionsFalsePassthrough(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		OpusModel:              "m",
 		SonnetModel:            "m",
@@ -579,6 +614,7 @@ func TestBuildClaudeConfig_ExcludeDynamicSectionsFalsePassthrough(t *testing.T) 
 }
 
 func TestBuildClaudeConfig_FieldMapping(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		ZaiAPIKey:       "key-123",
 		ZaiBaseURL:      "https://api.example.com",
@@ -628,6 +664,7 @@ func TestBuildClaudeConfig_FieldMapping(t *testing.T) {
 // TestBuildClaudeConfig_SystemPromptFromFlags verifies that when flags.SystemPrompt
 // is set it appears verbatim in the returned claude.Config.SystemPrompt.
 func TestBuildClaudeConfig_SystemPromptFromFlags(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{OpusModel: "m", SonnetModel: "m", HaikuModel: "m"}
 	flags := &Flags{
 		Prompt:       "do work",
@@ -648,6 +685,7 @@ func TestBuildClaudeConfig_SystemPromptFromFlags(t *testing.T) {
 // TestBuildClaudeConfig_SystemPromptFromConfig verifies that when flags.SystemPrompt
 // is empty, cfg.SystemPrompt is used as the base system prompt.
 func TestBuildClaudeConfig_SystemPromptFromConfig(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		OpusModel:    "m",
 		SonnetModel:  "m",
@@ -668,6 +706,7 @@ func TestBuildClaudeConfig_SystemPromptFromConfig(t *testing.T) {
 // TestBuildClaudeConfig_FlagSystemPromptOverridesConfig verifies that when both
 // flags.SystemPrompt and cfg.SystemPrompt are set, the flag value wins.
 func TestBuildClaudeConfig_FlagSystemPromptOverridesConfig(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{
 		OpusModel:    "m",
 		SonnetModel:  "m",
@@ -693,6 +732,7 @@ func TestBuildClaudeConfig_FlagSystemPromptOverridesConfig(t *testing.T) {
 // TestBuildClaudeConfig_ConstraintsExpanded verifies that a known constraint key
 // in flags.Constraints is expanded to its full instruction text in SystemPrompt.
 func TestBuildClaudeConfig_ConstraintsExpanded(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{OpusModel: "m", SonnetModel: "m", HaikuModel: "m"}
 	flags := &Flags{
 		Prompt:      "analyze code",
@@ -715,6 +755,7 @@ func TestBuildClaudeConfig_ConstraintsExpanded(t *testing.T) {
 // flags.Constraints and flags.SystemPrompt are set, the assembled result places
 // expanded constraints first, then a blank line, then the system prompt.
 func TestBuildClaudeConfig_ConstraintsPlusSystemPrompt(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{OpusModel: "m", SonnetModel: "m", HaikuModel: "m"}
 	flags := &Flags{
 		Prompt:       "analyze code",
@@ -738,6 +779,7 @@ func TestBuildClaudeConfig_ConstraintsPlusSystemPrompt(t *testing.T) {
 // TestBuildClaudeConfig_UnknownConstraintReturnsError verifies that an unknown
 // constraint key in flags.Constraints causes BuildClaudeConfig to return an error.
 func TestBuildClaudeConfig_UnknownConstraintReturnsError(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{OpusModel: "m", SonnetModel: "m", HaikuModel: "m"}
 	flags := &Flags{
 		Prompt:      "analyze code",
@@ -756,6 +798,7 @@ func TestBuildClaudeConfig_UnknownConstraintReturnsError(t *testing.T) {
 // carry a system prompt, the returned claude.Config.SystemPrompt is empty and no
 // error is returned.
 func TestBuildClaudeConfig_NoSystemPrompt(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{OpusModel: "m", SonnetModel: "m", HaikuModel: "m"}
 	flags := &Flags{Prompt: "do work", Dir: "/tmp", Timeout: 30}
 

@@ -5,6 +5,7 @@ import (
 )
 
 func TestParseFlags_SystemPrompt(t *testing.T) {
+	t.Parallel()
 	f, err := ParseFlags([]string{"--system-prompt", "Only read files", "do work"})
 	if err != nil {
 		t.Fatalf("ParseFlags: %v", err)
@@ -18,6 +19,7 @@ func TestParseFlags_SystemPrompt(t *testing.T) {
 }
 
 func TestParseFlags_SystemPromptMissingValue(t *testing.T) {
+	t.Parallel()
 	_, err := ParseFlags([]string{"--system-prompt"})
 	if err == nil {
 		t.Fatal("expected error for --system-prompt without value")
@@ -29,6 +31,7 @@ func TestParseFlags_SystemPromptMissingValue(t *testing.T) {
 }
 
 func TestParseFlags_SingleConstraint(t *testing.T) {
+	t.Parallel()
 	f, err := ParseFlags([]string{"--constraint", "readonly", "do work"})
 	if err != nil {
 		t.Fatalf("ParseFlags: %v", err)
@@ -42,6 +45,7 @@ func TestParseFlags_SingleConstraint(t *testing.T) {
 }
 
 func TestParseFlags_MultipleConstraints(t *testing.T) {
+	t.Parallel()
 	f, err := ParseFlags([]string{"--constraint", "readonly", "--constraint", "no-create", "do work"})
 	if err != nil {
 		t.Fatalf("ParseFlags: %v", err)
@@ -58,6 +62,7 @@ func TestParseFlags_MultipleConstraints(t *testing.T) {
 }
 
 func TestParseFlags_ConstraintMissingValue(t *testing.T) {
+	t.Parallel()
 	_, err := ParseFlags([]string{"--constraint"})
 	if err == nil {
 		t.Fatal("expected error for --constraint without value")
@@ -69,6 +74,7 @@ func TestParseFlags_ConstraintMissingValue(t *testing.T) {
 }
 
 func TestParseFlags_SystemPromptAndConstraints(t *testing.T) {
+	t.Parallel()
 	f, err := ParseFlags([]string{
 		"--system-prompt", "Only read files",
 		"--constraint", "readonly",
@@ -96,6 +102,7 @@ func TestParseFlags_SystemPromptAndConstraints(t *testing.T) {
 }
 
 func TestParseFlags_SystemPromptWithOtherFlags(t *testing.T) {
+	t.Parallel()
 	f, err := ParseFlags([]string{
 		"-d", "/tmp/project",
 		"-t", "300",

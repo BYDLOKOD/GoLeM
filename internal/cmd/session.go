@@ -60,43 +60,43 @@ func SessionCmd(cfg *config.Config, args []string, debugLog io.Writer) (*Session
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		switch {
-		case arg == "-d":
+		switch arg {
+		case "-d":
 			if i+1 < len(args) {
 				sa.WorkDir = args[i+1]
 				i++
 			}
-		case arg == "-t":
+		case "-t":
 			// Timeout is ignored for session mode; emit debug message.
 			if i+1 < len(args) {
 				i++ // consume the value
 			}
 			if debugLog != nil {
-				fmt.Fprintln(debugLog, "Timeout flag ignored for session mode")
+				_, _ = fmt.Fprintln(debugLog, "Timeout flag ignored for session mode")
 			}
-		case arg == "-m" || arg == "--model":
+		case "-m", "--model":
 			if i+1 < len(args) {
 				sa.Model = args[i+1]
 				i++
 			}
-		case arg == "--opus":
+		case "--opus":
 			if i+1 < len(args) {
 				sa.OpusModel = args[i+1]
 				i++
 			}
-		case arg == "--sonnet":
+		case "--sonnet":
 			if i+1 < len(args) {
 				sa.SonnetModel = args[i+1]
 				i++
 			}
-		case arg == "--haiku":
+		case "--haiku":
 			if i+1 < len(args) {
 				sa.HaikuModel = args[i+1]
 				i++
 			}
-		case arg == "--unsafe":
+		case "--unsafe":
 			sa.PermissionMode = "bypassPermissions"
-		case arg == "--mode":
+		case "--mode":
 			if i+1 < len(args) {
 				sa.PermissionMode = args[i+1]
 				i++
@@ -168,6 +168,16 @@ func SessionCmd(cfg *config.Config, args []string, debugLog io.Writer) (*Session
 
 	// Build argv for claude (interactive session — no -p, --output-format, etc.).
 	argv := []string{"claude"}
+
+	// Append --effort flag if configured.
+	if cfg.Effort != "" {
+		argv = append(argv, "--effort", cfg.Effort)
+	}
+
+	// Append --exclude-dynamic-system-prompt-sections if configured.
+	if cfg.ExcludeDynamicSections {
+		argv = append(argv, "--exclude-dynamic-system-prompt-sections")
+	}
 
 	// Append permission flags if needed.
 	if sa.PermissionMode == "bypassPermissions" {

@@ -1,9 +1,0 @@
-feature: job-filtering
-files:
-  - jobs_dataset.json
-  - filter_by_status.json
-  - filter_by_multi_status.json
-  - filter_by_project.json
-  - filter_by_since.json
-  - filter_combined.json
-  - filter_invalid_status.json

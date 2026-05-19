@@ -2,6 +2,7 @@ package cmd_test
 
 import (
 	"bytes"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -26,7 +27,6 @@ func newSessionConfig(t *testing.T) *config.Config {
 		SonnetModel:     config.DefaultModel,
 		HaikuModel:      config.DefaultModel,
 		PermissionMode:  config.DefaultPermissionMode,
-		APIRPS:          config.DefaultAPIRPS,
 	}
 }
 
@@ -194,9 +194,9 @@ func TestZAIEnvironmentVariablesAreSetForSession(t *testing.T) {
 
 	assertEnvPresent(t, res.Env, "ANTHROPIC_AUTH_TOKEN", "sk-zai-key")
 	assertEnvPresent(t, res.Env, "ANTHROPIC_BASE_URL", "https://api.z.ai/api/anthropic")
-	assertEnvPresent(t, res.Env, "ANTHROPIC_DEFAULT_OPUS_MODEL", "glm-5")
-	assertEnvPresent(t, res.Env, "ANTHROPIC_DEFAULT_SONNET_MODEL", "glm-5")
-	assertEnvPresent(t, res.Env, "ANTHROPIC_DEFAULT_HAIKU_MODEL", "glm-5")
+	assertEnvPresent(t, res.Env, "ANTHROPIC_DEFAULT_OPUS_MODEL", config.DefaultModel)
+	assertEnvPresent(t, res.Env, "ANTHROPIC_DEFAULT_SONNET_MODEL", config.DefaultModel)
+	assertEnvPresent(t, res.Env, "ANTHROPIC_DEFAULT_HAIKU_MODEL", config.DefaultModel)
 }
 
 // ---------------------------------------------------------------------------
@@ -263,9 +263,9 @@ func TestNoFlagsProvidedLaunchesWithAllDefaults(t *testing.T) {
 	cfg := newSessionConfig(t)
 	res := runSession(t, cfg, nil)
 
-	assertEnvPresent(t, res.Env, "ANTHROPIC_DEFAULT_OPUS_MODEL", "glm-5")
-	assertEnvPresent(t, res.Env, "ANTHROPIC_DEFAULT_SONNET_MODEL", "glm-5")
-	assertEnvPresent(t, res.Env, "ANTHROPIC_DEFAULT_HAIKU_MODEL", "glm-5")
+	assertEnvPresent(t, res.Env, "ANTHROPIC_DEFAULT_OPUS_MODEL", config.DefaultModel)
+	assertEnvPresent(t, res.Env, "ANTHROPIC_DEFAULT_SONNET_MODEL", config.DefaultModel)
+	assertEnvPresent(t, res.Env, "ANTHROPIC_DEFAULT_HAIKU_MODEL", config.DefaultModel)
 
 	// No GoLeM-specific args leaked to argv.
 	assertArgAbsent(t, res.Argv, "-d")
@@ -336,4 +336,83 @@ func TestSessionSetsAPITimeoutMS(t *testing.T) {
 	cfg := newSessionConfig(t)
 	res := runSession(t, cfg, nil)
 	assertEnvPresent(t, res.Env, "API_TIMEOUT_MS", config.ZaiAPITimeoutMs)
+}
+
+// ---------------------------------------------------------------------------
+// CLAUDE_CODE_* env vars must not be injected by session
+// ---------------------------------------------------------------------------
+
+func TestSessionDoesNotInjectCLAUDE_CODE_EnvVars(t *testing.T) {
+	keys := []string{
+		"CLAUDE_CODE_NO_FLICKER",
+		"CLAUDE_CODE_NEW_INIT",
+		"CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING",
+		"CLAUDE_CODE_INVESTIGATE_FIRST",
+		"CLAUDE_CODE_ALWAYS_ENABLE_EFFORT",
+	}
+
+	// Clear keys from host env for the duration of this test.
+	for _, key := range keys {
+		prev, had := os.LookupEnv(key)
+		if had {
+			os.Unsetenv(key) //nolint:errcheck
+			t.Cleanup(func() { os.Setenv(key, prev) })
+		}
+	}
+
+	cfg := newSessionConfig(t)
+	res := runSession(t, cfg, nil)
+
+	for _, key := range keys {
+		assertEnvAbsent(t, res.Env, key)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// --effort flag in session mode
+// ---------------------------------------------------------------------------
+
+func TestSessionIncludesEffortFlagFromConfig(t *testing.T) {
+	cfg := newSessionConfig(t)
+	cfg.Effort = "max"
+	res := runSession(t, cfg, nil)
+
+	found := false
+	for i, a := range res.Argv {
+		if a == "--effort" && i+1 < len(res.Argv) && res.Argv[i+1] == "max" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("argv should contain --effort max; got %v", res.Argv)
+	}
+}
+
+func TestSessionOmitsEffortFlagWhenEmpty(t *testing.T) {
+	cfg := newSessionConfig(t)
+	cfg.Effort = ""
+	res := runSession(t, cfg, nil)
+
+	assertArgAbsent(t, res.Argv, "--effort")
+}
+
+// ---------------------------------------------------------------------------
+// --exclude-dynamic-system-prompt-sections flag in session mode
+// ---------------------------------------------------------------------------
+
+func TestSessionIncludesExcludeDynamicSectionsFlag(t *testing.T) {
+	cfg := newSessionConfig(t)
+	cfg.ExcludeDynamicSections = true
+	res := runSession(t, cfg, nil)
+
+	assertArgPresent(t, res.Argv, "--exclude-dynamic-system-prompt-sections")
+}
+
+func TestSessionOmitsExcludeDynamicSectionsFlagWhenFalse(t *testing.T) {
+	cfg := newSessionConfig(t)
+	cfg.ExcludeDynamicSections = false
+	res := runSession(t, cfg, nil)
+
+	assertArgAbsent(t, res.Argv, "--exclude-dynamic-system-prompt-sections")
 }

@@ -18,12 +18,10 @@ func installOpts(t *testing.T, tmpDir string, input string) (cmd.InstallOptions,
 	configDir := filepath.Join(tmpDir, "config")
 	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
 	subagentsDir := filepath.Join(tmpDir, "subagents")
-	binDir := filepath.Join(tmpDir, "bin")
 	var output bytes.Buffer
 
 	return cmd.InstallOptions{
 		CloneDir:     "",
-		BinDir:       binDir,
 		ConfigDir:    configDir,
 		ClaudeMDPath: claudeMD,
 		SubagentsDir: subagentsDir,
@@ -38,11 +36,9 @@ func uninstallOpts(t *testing.T, tmpDir string, input string) (cmd.UninstallOpti
 	configDir := filepath.Join(tmpDir, "config")
 	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
 	subagentsDir := filepath.Join(tmpDir, "subagents")
-	binDir := filepath.Join(tmpDir, "bin")
 	var output bytes.Buffer
 
 	return cmd.UninstallOptions{
-		BinDir:       binDir,
 		ConfigDir:    configDir,
 		ClaudeMDPath: claudeMD,
 		SubagentsDir: subagentsDir,
@@ -82,8 +78,12 @@ func TestInstallPromptsForAPIKeyAndSaves(t *testing.T) {
 
 func TestInstallSkipsAPIKeyPromptIfKeyExistsAndUserDeclines(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "config"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "config", "zai_api_key"), []byte("sk-existing-key"), 0o600)
+	if err := os.MkdirAll(filepath.Join(tmpDir, "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "config", "zai_api_key"), []byte("sk-existing-key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	opts, _ := installOpts(t, tmpDir, "n\nbypassPermissions\n")
 
@@ -100,8 +100,12 @@ func TestInstallSkipsAPIKeyPromptIfKeyExistsAndUserDeclines(t *testing.T) {
 
 func TestInstallOverwritesAPIKeyWhenUserConfirms(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "config"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "config", "zai_api_key"), []byte("sk-old-key"), 0o600)
+	if err := os.MkdirAll(filepath.Join(tmpDir, "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "config", "zai_api_key"), []byte("sk-old-key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	opts, _ := installOpts(t, tmpDir, "y\nsk-new-key-999\nbypassPermissions\n")
 
@@ -178,8 +182,12 @@ func TestInstallUsesDefaultPermissionMode(t *testing.T) {
 
 func TestInstallSkipsPermissionPromptIfTomlExists(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "config"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "config", "glm.toml"), []byte("permission_mode = \"plan\"\n"), 0o644)
+	if err := os.MkdirAll(filepath.Join(tmpDir, "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "config", "glm.toml"), []byte("permission_mode = \"plan\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Only API key input, no permission mode prompt needed
 	opts, _ := installOpts(t, tmpDir, "sk-key\n")
@@ -240,7 +248,9 @@ func TestInstallCreatesConfigJSONWithMetadata(t *testing.T) {
 func TestInstallConfigJSONContainsCloneDirForSourceInstall(t *testing.T) {
 	tmpDir := t.TempDir()
 	cloneDir := filepath.Join(tmpDir, "clone")
-	os.MkdirAll(filepath.Join(cloneDir, ".git"), 0o755)
+	if err := os.MkdirAll(filepath.Join(cloneDir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	opts, _ := installOpts(t, tmpDir, "sk-key\nbypassPermissions\n")
 	opts.CloneDir = cloneDir
@@ -266,109 +276,6 @@ func TestInstallConfigJSONContainsCloneDirForSourceInstall(t *testing.T) {
 	}
 	if meta.CloneDir != cloneDir {
 		t.Errorf("clone_dir: got %q, want %q", meta.CloneDir, cloneDir)
-	}
-}
-
-// ─── AC4: Creates symlink or copies binary ──────────────────────────────────────
-
-func TestInstallCreatesSymlinkForSourceInstall(t *testing.T) {
-	tmpDir := t.TempDir()
-	cloneDir := filepath.Join(tmpDir, "clone")
-	os.MkdirAll(filepath.Join(cloneDir, ".git"), 0o755)
-	// Create a fake binary
-	os.WriteFile(filepath.Join(cloneDir, "glm"), []byte("#!/bin/bash\necho fake"), 0o755)
-
-	opts, _ := installOpts(t, tmpDir, "sk-key\nbypassPermissions\n")
-	opts.CloneDir = cloneDir
-
-	err := cmd.InstallCmd(opts)
-	if err != nil {
-		t.Fatalf("InstallCmd: %v", err)
-	}
-
-	symlinkPath := filepath.Join(opts.BinDir, "glm")
-	info, err := os.Lstat(symlinkPath)
-	if err != nil {
-		t.Fatalf("symlink not created: %v", err)
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Error("glm is not a symlink")
-	}
-
-	target, _ := os.Readlink(symlinkPath)
-	if target != filepath.Join(cloneDir, "glm") {
-		t.Errorf("symlink target: got %q, want %q", target, filepath.Join(cloneDir, "glm"))
-	}
-}
-
-func TestInstallNoSymlinkForGoInstall(t *testing.T) {
-	tmpDir := t.TempDir()
-	opts, output := installOpts(t, tmpDir, "sk-key\nbypassPermissions\n")
-	// CloneDir is empty for go-install
-
-	err := cmd.InstallCmd(opts)
-	if err != nil {
-		t.Fatalf("InstallCmd: %v", err)
-	}
-
-	symlinkPath := filepath.Join(opts.BinDir, "glm")
-	if _, err := os.Lstat(symlinkPath); !os.IsNotExist(err) {
-		t.Error("symlink should not be created for go-install mode")
-	}
-
-	if !strings.Contains(output.String(), "via go install") {
-		t.Errorf("output should mention 'via go install', got: %s", output.String())
-	}
-}
-
-func TestInstallWarnsIfBinDirNotInPath(t *testing.T) {
-	tmpDir := t.TempDir()
-	cloneDir := filepath.Join(tmpDir, "clone")
-	os.MkdirAll(filepath.Join(cloneDir, ".git"), 0o755)
-	os.WriteFile(filepath.Join(cloneDir, "glm"), []byte("#!/bin/bash\necho fake"), 0o755)
-
-	// Set PATH to not include bin dir
-	oldPath := os.Getenv("PATH")
-	os.Setenv("PATH", "/usr/bin:/bin")
-	defer os.Setenv("PATH", oldPath)
-
-	opts, output := installOpts(t, tmpDir, "sk-key\nbypassPermissions\n")
-	opts.CloneDir = cloneDir
-
-	err := cmd.InstallCmd(opts)
-	if err != nil {
-		t.Fatalf("InstallCmd: %v", err)
-	}
-
-	if !strings.Contains(output.String(), "not in PATH") {
-		t.Errorf("expected warning about PATH, got: %s", output.String())
-	}
-}
-
-func TestInstallPromptsToReplaceExistingNonSymlinkBinary(t *testing.T) {
-	tmpDir := t.TempDir()
-	cloneDir := filepath.Join(tmpDir, "clone")
-	os.MkdirAll(filepath.Join(cloneDir, ".git"), 0o755)
-	os.WriteFile(filepath.Join(cloneDir, "glm"), []byte("#!/bin/bash\necho fake"), 0o755)
-
-	opts, _ := installOpts(t, tmpDir, "sk-key\nbypassPermissions\ny\n")
-	opts.CloneDir = cloneDir
-
-	// Pre-create a regular file at the target location
-	os.MkdirAll(opts.BinDir, 0o755)
-	os.WriteFile(filepath.Join(opts.BinDir, "glm"), []byte("old binary"), 0o755)
-
-	err := cmd.InstallCmd(opts)
-	if err != nil {
-		t.Fatalf("InstallCmd: %v", err)
-	}
-
-	info, err := os.Lstat(filepath.Join(opts.BinDir, "glm"))
-	if err != nil {
-		t.Fatalf("glm not found: %v", err)
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Error("glm should be a symlink after replacement")
 	}
 }
 
@@ -407,8 +314,12 @@ Old content here
 ## My Editor Preferences
 - 2-space indentation
 `
-	os.MkdirAll(filepath.Dir(filepath.Join(tmpDir, "CLAUDE.md")), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "CLAUDE.md"), []byte(existingContent), 0o644)
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(tmpDir, "CLAUDE.md")), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "CLAUDE.md"), []byte(existingContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	opts, _ := installOpts(t, tmpDir, "sk-key\nbypassPermissions\n")
 
@@ -436,8 +347,12 @@ func TestInstallAppendsGLMSectionToExistingFile(t *testing.T) {
 ## My Custom Rules
 - Always use TypeScript
 `
-	os.MkdirAll(filepath.Dir(filepath.Join(tmpDir, "CLAUDE.md")), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "CLAUDE.md"), []byte(existingContent), 0o644)
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(tmpDir, "CLAUDE.md")), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "CLAUDE.md"), []byte(existingContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	opts, _ := installOpts(t, tmpDir, "sk-key\nbypassPermissions\n")
 
@@ -476,55 +391,6 @@ func TestInstallCreatesSubagentsDirectory(t *testing.T) {
 	}
 }
 
-// ─── AC7: Uninstall removes symlink ─────────────────────────────────────────────
-
-func TestUninstallRemovesSymlinkForSourceInstall(t *testing.T) {
-	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "bin"), 0o755)
-	symlinkPath := filepath.Join(tmpDir, "bin", "glm")
-	os.Symlink("/some/target", symlinkPath)
-
-	// Create config.json with source mode
-	os.MkdirAll(filepath.Join(tmpDir, "config"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "config", "config.json"), []byte(`{"install_mode": "source"}`), 0o644)
-
-	// Create CLAUDE.md with GLM section
-	os.WriteFile(filepath.Join(tmpDir, "CLAUDE.md"), []byte("<!-- GLM-SUBAGENT-START -->x<!-- GLM-SUBAGENT-END -->"), 0o644)
-
-	opts, _ := uninstallOpts(t, tmpDir, "n\nn\n")
-
-	err := cmd.UninstallCmd(opts)
-	if err != nil {
-		t.Fatalf("UninstallCmd: %v", err)
-	}
-
-	if _, err := os.Lstat(symlinkPath); !os.IsNotExist(err) {
-		t.Error("symlink should be removed")
-	}
-}
-
-func TestUninstallSkipsSymlinkRemovalForGoInstall(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create config.json with go-install mode
-	os.MkdirAll(filepath.Join(tmpDir, "config"), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "config", "config.json"), []byte(`{"install_mode": "go-install"}`), 0o644)
-
-	// Create CLAUDE.md with GLM section
-	os.WriteFile(filepath.Join(tmpDir, "CLAUDE.md"), []byte("<!-- GLM-SUBAGENT-START -->x<!-- GLM-SUBAGENT-END -->"), 0o644)
-
-	opts, output := uninstallOpts(t, tmpDir, "n\nn\n")
-
-	err := cmd.UninstallCmd(opts)
-	if err != nil {
-		t.Fatalf("UninstallCmd: %v", err)
-	}
-
-	if !strings.Contains(output.String(), "go install") {
-		t.Error("should mention go install mode")
-	}
-}
-
 // ─── AC8: Removes GLM section from CLAUDE.md ─────────────────────────────────────
 
 func TestUninstallRemovesGLMSectionFromCLAUDEMD(t *testing.T) {
@@ -536,8 +402,12 @@ Content
 <!-- GLM-SUBAGENT-END -->
 ## Other section
 `
-	os.MkdirAll(filepath.Dir(filepath.Join(tmpDir, "CLAUDE.md")), 0o755)
-	os.WriteFile(filepath.Join(tmpDir, "CLAUDE.md"), []byte(content), 0o644)
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(tmpDir, "CLAUDE.md")), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "CLAUDE.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	opts, _ := uninstallOpts(t, tmpDir, "n\nn\n")
 
@@ -726,10 +596,7 @@ func TestInstallOverExistingInstallationReRunsSetup(t *testing.T) {
 	}
 
 	// Verify first install
-	data1, _ := os.ReadFile(filepath.Join(opts1.ConfigDir, "config.json"))
-	if !strings.Contains(string(data1), "sk-old-key") {
-		// config.json doesn't contain API key, check zai_api_key
-	}
+	_, _ = os.ReadFile(filepath.Join(opts1.ConfigDir, "config.json"))
 	apiKey1, _ := os.ReadFile(filepath.Join(opts1.ConfigDir, "zai_api_key"))
 	if string(apiKey1) != "sk-old-key" {
 		t.Fatalf("first install API key: got %q", string(apiKey1))
@@ -751,39 +618,6 @@ func TestInstallOverExistingInstallationReRunsSetup(t *testing.T) {
 	claudeMD, _ := os.ReadFile(opts2.ClaudeMDPath)
 	if !strings.Contains(string(claudeMD), "<!-- GLM-SUBAGENT-START -->") {
 		t.Error("CLAUDE.md should still have GLM section")
-	}
-}
-
-func TestInstallMigratesLegacyAPIKey(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create legacy key location
-	home := tmpDir
-	legacyDir := filepath.Join(home, ".config", "zai")
-	os.MkdirAll(legacyDir, 0o755)
-	os.WriteFile(filepath.Join(legacyDir, "env"), []byte(`ZAI_API_KEY="sk-legacy-key-123"`), 0o600)
-
-	// Set HOME to tmpDir for this test
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", home)
-	defer os.Setenv("HOME", oldHome)
-
-	opts, output := installOpts(t, tmpDir, "bypassPermissions\n")
-	// No API key input - should be migrated
-
-	err := cmd.InstallCmd(opts)
-	if err != nil {
-		t.Fatalf("InstallCmd: %v", err)
-	}
-
-	// Check migrated key
-	apiKey, _ := os.ReadFile(filepath.Join(opts.ConfigDir, "zai_api_key"))
-	if string(apiKey) != "sk-legacy-key-123" {
-		t.Errorf("migrated API key: got %q, want 'sk-legacy-key-123'", string(apiKey))
-	}
-
-	if !strings.Contains(output.String(), "Migrated API key") {
-		t.Error("expected migration message in output")
 	}
 }
 
@@ -921,5 +755,299 @@ func TestRemoveClaudeMDSectionNoFileNoOp(t *testing.T) {
 	err := cmd.RemoveClaudeMDSection(claudeMD)
 	if err != nil {
 		t.Fatalf("RemoveClaudeMDSection: %v", err)
+	}
+}
+
+// ─── MCP Registration ──────────────────────────────────────────────────────────
+
+func TestRegisterMCPServerAtPath_NewFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	err := cmd.RegisterMCPServerAtPath(path, "/usr/bin/glm")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	mcpServers := settings["mcpServers"].(map[string]any)
+	golem := mcpServers["golem"].(map[string]any)
+	if golem["command"] != "/usr/bin/glm" {
+		t.Errorf("command = %v, want /usr/bin/glm", golem["command"])
+	}
+	args := golem["args"].([]any)
+	if len(args) != 1 || args[0] != "mcp" {
+		t.Errorf("args = %v, want [mcp]", args)
+	}
+}
+
+func TestRegisterMCPServerAtPath_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	// First registration.
+	if err := cmd.RegisterMCPServerAtPath(path, "/usr/bin/glm"); err != nil {
+		t.Fatalf("first register: %v", err)
+	}
+
+	// Second registration with different path.
+	if err := cmd.RegisterMCPServerAtPath(path, "/usr/local/bin/glm"); err != nil {
+		t.Fatalf("second register: %v", err)
+	}
+
+	data, _ := os.ReadFile(path)
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	mcpServers := settings["mcpServers"].(map[string]any)
+	golem := mcpServers["golem"].(map[string]any)
+	if golem["command"] != "/usr/local/bin/glm" {
+		t.Errorf("command = %v, want /usr/local/bin/glm", golem["command"])
+	}
+
+	// Verify no duplicate keys.
+	if len(mcpServers) != 1 {
+		t.Errorf("mcpServers has %d entries, want 1", len(mcpServers))
+	}
+}
+
+func TestRegisterMCPServerAtPath_PreservesExistingServers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	// Pre-existing settings with another MCP server.
+	existing := map[string]any{
+		"mcpServers": map[string]any{
+			"other-tool": map[string]any{
+				"command": "other",
+				"args":    []string{"serve"},
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(existing, "", "  ")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cmd.RegisterMCPServerAtPath(path, "/usr/bin/glm"); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	data, _ = os.ReadFile(path)
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	mcpServers := settings["mcpServers"].(map[string]any)
+
+	// Both servers should exist.
+	if _, ok := mcpServers["other-tool"]; !ok {
+		t.Error("other-tool server missing")
+	}
+	if _, ok := mcpServers["golem"]; !ok {
+		t.Error("golem server missing")
+	}
+}
+
+func TestRegisterMCPServerAtPath_PreservesExistingSettings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	// Pre-existing settings with non-MCP fields.
+	existing := map[string]any{
+		"permissions": map[string]any{
+			"allow": []string{"Read", "Write"},
+		},
+	}
+	data, _ := json.MarshalIndent(existing, "", "  ")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cmd.RegisterMCPServerAtPath(path, "/usr/bin/glm"); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	data, _ = os.ReadFile(path)
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// permissions should still be present.
+	if _, ok := settings["permissions"]; !ok {
+		t.Error("existing permissions field was lost")
+	}
+	// golem should be registered.
+	mcpServers := settings["mcpServers"].(map[string]any)
+	if _, ok := mcpServers["golem"]; !ok {
+		t.Error("golem server missing")
+	}
+}
+
+func TestRegisterMCPServerAtPath_MalformedJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	// Write malformed JSON.
+	os.WriteFile(path, []byte("{broken json"), 0o644)
+
+	// Should succeed by starting fresh.
+	err := cmd.RegisterMCPServerAtPath(path, "/usr/bin/glm")
+	if err != nil {
+		t.Fatalf("register with malformed file: %v", err)
+	}
+
+	data, _ := os.ReadFile(path)
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("result is invalid JSON: %v", err)
+	}
+	mcpServers := settings["mcpServers"].(map[string]any)
+	if _, ok := mcpServers["golem"]; !ok {
+		t.Error("golem server missing after malformed file recovery")
+	}
+}
+
+func TestRegisterMCPServerAtPath_CreatesParentDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nested", "dir", "settings.json")
+
+	err := cmd.RegisterMCPServerAtPath(path, "/usr/bin/glm")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("settings file not created: %v", err)
+	}
+}
+
+// ─── MCP Deregistration ────────────────────────────────────────────────────────
+
+func TestDeregisterMCPServerAtPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	// Register first.
+	if err := cmd.RegisterMCPServerAtPath(path, "/usr/bin/glm"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Deregister.
+	if err := cmd.DeregisterMCPServerAtPath(path); err != nil {
+		t.Fatalf("deregister: %v", err)
+	}
+
+	data, _ := os.ReadFile(path)
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// mcpServers should be removed entirely (was the only entry).
+	if _, ok := settings["mcpServers"]; ok {
+		t.Error("mcpServers should be removed when empty")
+	}
+}
+
+func TestDeregisterMCPServerAtPath_PreservesOtherServers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	// Register golem and another server.
+	existing := map[string]any{
+		"mcpServers": map[string]any{
+			"golem": map[string]any{
+				"command": "glm",
+				"args":    []string{"mcp"},
+			},
+			"other-tool": map[string]any{
+				"command": "other",
+				"args":    []string{"serve"},
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(existing, "", "  ")
+	os.WriteFile(path, data, 0o644)
+
+	if err := cmd.DeregisterMCPServerAtPath(path); err != nil {
+		t.Fatalf("deregister: %v", err)
+	}
+
+	data, _ = os.ReadFile(path)
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	mcpServers := settings["mcpServers"].(map[string]any)
+
+	if _, ok := mcpServers["golem"]; ok {
+		t.Error("golem should be removed")
+	}
+	if _, ok := mcpServers["other-tool"]; !ok {
+		t.Error("other-tool should be preserved")
+	}
+}
+
+func TestDeregisterMCPServerAtPath_NoFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	// No file -- should be a no-op.
+	if err := cmd.DeregisterMCPServerAtPath(path); err != nil {
+		t.Fatalf("deregister non-existent file: %v", err)
+	}
+}
+
+func TestDeregisterMCPServerAtPath_MalformedJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	os.WriteFile(path, []byte("{broken json"), 0o644)
+
+	// Malformed file -- no-op, nothing to remove.
+	if err := cmd.DeregisterMCPServerAtPath(path); err != nil {
+		t.Fatalf("deregister malformed file: %v", err)
+	}
+}
+
+func TestDeregisterMCPServerAtPath_NoGolemEntry(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+
+	existing := map[string]any{
+		"mcpServers": map[string]any{
+			"other-tool": map[string]any{
+				"command": "other",
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(existing, "", "  ")
+	os.WriteFile(path, data, 0o644)
+
+	if err := cmd.DeregisterMCPServerAtPath(path); err != nil {
+		t.Fatalf("deregister: %v", err)
+	}
+
+	data, _ = os.ReadFile(path)
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	mcpServers := settings["mcpServers"].(map[string]any)
+
+	if _, ok := mcpServers["other-tool"]; !ok {
+		t.Error("other-tool should be preserved")
 	}
 }

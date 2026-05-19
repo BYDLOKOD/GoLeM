@@ -1,9 +1,0 @@
-feature: structured-logging
-files:
-  - log_human_tty.json
-  - log_human_pipe.json
-  - log_json_format.json
-  - log_debug_enabled.json
-  - log_to_file.json
-  - log_file_not_writable.json
-  - log_unknown_format.json

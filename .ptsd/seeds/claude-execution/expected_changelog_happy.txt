@@ -1,2 +1,0 @@
-EDIT /home/veschin/work/GoLeM/internal/slot/slot.go: 341 chars
-WRITE /home/veschin/work/GoLeM/internal/job/atomic.go

@@ -153,14 +153,13 @@ func (l *Logger) log(msgLevel Level, prefix, msg, colorCode string) {
 	defer l.mu.Unlock()
 
 	// Write to primary output
-	l.out.Write([]byte(output))
+	_, _ = l.out.Write([]byte(output))
 
 	// Write to file if configured
 	if l.file != nil {
 		if _, err := l.file.Write([]byte(output)); err != nil {
 			// If file write fails, write warning to stdout first, then the original message
-			warning := fmt.Sprintf("[!] Cannot write to log file\n")
-			l.out.Write([]byte(warning))
+			_, _ = l.out.Write([]byte("[!] Cannot write to log file\n"))
 		}
 	}
 }

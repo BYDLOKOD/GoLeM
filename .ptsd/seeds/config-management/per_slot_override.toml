@@ -1,6 +1,0 @@
-model = "glm-4.5"
-opus_model = "glm-5"
-sonnet_model = "glm-4.5"
-haiku_model = "glm-4.0"
-permission_mode = "bypassPermissions"
-max_parallel = 2

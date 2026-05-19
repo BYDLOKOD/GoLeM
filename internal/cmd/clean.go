@@ -38,7 +38,7 @@ func CleanCmd(subagentsRoot string, days int, now time.Time, w io.Writer) error 
 	entries, err := os.ReadDir(subagentsRoot)
 	if err != nil {
 		// Root doesn't exist: nothing to clean.
-		fmt.Fprintln(w, "Cleaned 0 jobs")
+		_, _ = fmt.Fprintln(w, "Cleaned 0 jobs")
 		return nil
 	}
 
@@ -85,6 +85,6 @@ func CleanCmd(subagentsRoot string, days int, now time.Time, w io.Writer) error 
 		}
 	}
 
-	fmt.Fprintf(w, "Cleaned %d jobs\n", count)
+	_, _ = fmt.Fprintf(w, "Cleaned %d jobs\n", count)
 	return nil
 }

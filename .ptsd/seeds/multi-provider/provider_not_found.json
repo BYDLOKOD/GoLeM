@@ -1,4 +1,0 @@
-{
-  "provider": "nonexistent",
-  "expected_error": "err:user Unknown provider: nonexistent. Available: zai, custom"
-}

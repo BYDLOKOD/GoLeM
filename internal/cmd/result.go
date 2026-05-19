@@ -47,18 +47,18 @@ func ResultCmd(jobID, subagentsRoot, currentProjectID string, stdout, stderr io.
 
 	// Read stdout.txt
 	stdoutData, _ := os.ReadFile(jobDir + "/stdout.txt")
-	fmt.Fprint(stdout, string(stdoutData))
+	_, _ = fmt.Fprint(stdout, string(stdoutData))
 
 	// For failed/timeout/permission_error, print stderr.txt as warning
 	if status == job.StatusFailed || status == job.StatusTimeout || status == job.StatusPermissionError {
 		stderrData, _ := os.ReadFile(jobDir + "/stderr.txt")
 		if len(stderrData) > 0 {
-			fmt.Fprint(stderr, string(stderrData))
+			_, _ = fmt.Fprint(stderr, string(stderrData))
 		}
 	}
 
 	// Auto-delete the job directory
-	job.DeleteJob(jobDir)
+	_ = job.DeleteJob(jobDir)
 
 	return &ResultResult{
 		Stdout:   string(stdoutData),

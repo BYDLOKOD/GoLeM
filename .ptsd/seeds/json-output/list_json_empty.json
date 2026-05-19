@@ -1,4 +1,0 @@
-{
-  "description": "glm list --json with no jobs — output is empty array",
-  "expected_output": []
-}

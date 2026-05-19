@@ -56,7 +56,7 @@ func TestDoctorCmdWithAPIKey(t *testing.T) {
 	output := buf.String()
 
 	// Find the api_key line and verify it shows OK.
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "api_key") {
 			if !strings.Contains(line, "OK") {
 				t.Errorf("api_key line expected OK; got: %q", line)
@@ -81,7 +81,7 @@ func TestDoctorCmdWithoutAPIKey(t *testing.T) {
 	}
 	output := buf.String()
 
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "api_key") {
 			if !strings.Contains(line, "FAIL") {
 				t.Errorf("api_key line expected FAIL; got: %q", line)
@@ -132,7 +132,6 @@ func TestDoctorCmdSlotsDisplay(t *testing.T) {
 	var buf bytes.Buffer
 	opts := cmd.DoctorOptions{
 		SubagentsRoot: root,
-		APIRPS:   5,
 		ZAIEndpoint:   "http://127.0.0.1:1",
 		HTTPTimeout:   1 * time.Millisecond,
 	}
@@ -141,9 +140,9 @@ func TestDoctorCmdSlotsDisplay(t *testing.T) {
 	}
 	output := buf.String()
 
-	// The slots line should show "1/5 slots in use".
-	if !strings.Contains(output, "1/5") {
-		t.Errorf("output missing slot count 1/5; got:\n%s", output)
+	// The slots line should show "1 running" (no max since global limit is removed).
+	if !strings.Contains(output, "1 running") {
+		t.Errorf("output missing slot count '1 running'; got:\n%s", output)
 	}
 }
 
@@ -163,7 +162,7 @@ func TestConfigShowCmdDefaults(t *testing.T) {
 
 	expectedKeys := []string{
 		"model", "opus_model", "sonnet_model", "haiku_model",
-		"permission_mode", "api_rps", "debug",
+		"permission_mode", "debug",
 		"zai_base_url", "zai_api_timeout_ms",
 	}
 	for _, key := range expectedKeys {
@@ -178,7 +177,6 @@ func TestConfigShowCmdDefaults(t *testing.T) {
 func TestConfigShowCmdWithTOML(t *testing.T) {
 	dir := t.TempDir()
 	toml := `model = "glm-4.9"
-api_rps = 7
 `
 	if err := os.WriteFile(filepath.Join(dir, "glm.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatalf("write glm.toml: %v", err)
@@ -291,18 +289,21 @@ func TestConfigSetCmdInvalidPermissionMode(t *testing.T) {
 	}
 }
 
-// TestConfigSetCmdInvalidAPIRPS verifies that setting a non-numeric
-// api_rps returns an error.
-func TestConfigSetCmdInvalidAPIRPS(t *testing.T) {
+// TestConfigSetCmdAPIRPSIsUnknown verifies that api_rps is no longer a
+// recognized config key (the global concurrency limit was removed).
+func TestConfigSetCmdAPIRPSIsUnknown(t *testing.T) {
 	dir := t.TempDir()
 	opts := cmd.ConfigSetOptions{
 		ConfigDir: dir,
 		Key:       "api_rps",
-		Value:     "not-a-number",
+		Value:     "3",
 	}
 	err := cmd.ConfigSetCmd(opts)
 	if err == nil {
-		t.Fatal("expected error for invalid api_rps, got nil")
+		t.Fatal("expected error for removed api_rps key, got nil")
+	}
+	if !strings.HasPrefix(err.Error(), "err:user") {
+		t.Errorf("error should start with err:user; got: %s", err.Error())
 	}
 	if !strings.Contains(err.Error(), "api_rps") {
 		t.Errorf("error should mention 'api_rps'; got: %s", err.Error())

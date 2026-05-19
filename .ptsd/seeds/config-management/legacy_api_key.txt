@@ -1,1 +1,0 @@
-ZAI_API_KEY="sk-zai-legacy-x9y8w7v6u5t4s3r2q1p0o9n8m7l6k5j4i3h2g1f0"

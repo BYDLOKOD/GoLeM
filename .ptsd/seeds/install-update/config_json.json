@@ -1,8 +1,0 @@
-{
-  "installed_at": "2026-02-27T14:00:00+03:00",
-  "version": "2.0.0",
-  "clone_dir": "/home/veschin/.local/share/GoLeM",
-  "bin": "/home/veschin/.local/bin/glm",
-  "claude_md": "/home/veschin/.claude/CLAUDE.md",
-  "subagents_dir": "/home/veschin/.claude/subagents"
-}

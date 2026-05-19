@@ -1,8 +1,0 @@
-feature: json-output
-files:
-  - list_json.json
-  - status_json.json
-  - result_json.json
-  - result_json_failed.json
-  - log_json.json
-  - list_json_empty.json

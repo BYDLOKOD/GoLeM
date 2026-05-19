@@ -1,7 +1,0 @@
-{
-  "directory": "/tmp/scratch-work",
-  "basename": "scratch-work",
-  "cksum_input": "/tmp/scratch-work",
-  "expected_project_id": "scratch-work-{cksum}",
-  "note": "cksum is CRC32 IEEE of absolute directory path, computed at test time"
-}

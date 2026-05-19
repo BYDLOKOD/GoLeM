@@ -1,5 +1,0 @@
-{
-  "filter": "--status running",
-  "input": "jobs_dataset.json",
-  "expected_count": 2
-}

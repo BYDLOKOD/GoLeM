@@ -6,8 +6,6 @@ set -euo pipefail
 
 REPO_URL="https://github.com/veschin/GoLeM.git"
 CLONE_DIR="${HOME}/.local/share/GoLeM"
-BIN_DIR="${HOME}/.local/bin"
-TARGET_BIN="${BIN_DIR}/glm"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -159,17 +157,19 @@ else
     git clone --quiet "$REPO_URL" "$CLONE_DIR"
 fi
 
-# --- Build binary ---
-step "Building glm binary..."
+# --- Install binary via go install ---
+step "Installing glm binary..."
 cd "$CLONE_DIR"
-go build -o "$TARGET_BIN" ./cmd/glm/
-info "Binary built: $TARGET_BIN"
+go install ./cmd/glm/
+TARGET_BIN="$(go env GOPATH)/bin/glm"
+info "Binary installed: $TARGET_BIN"
 
-# --- Ensure bin dir in PATH ---
-if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-    warn "$BIN_DIR is not in PATH"
+# --- Ensure GOPATH/bin in PATH ---
+GOPATH_BIN="$(go env GOPATH)/bin"
+if [[ ":$PATH:" != *":$GOPATH_BIN:"* ]]; then
+    warn "$GOPATH_BIN is not in PATH"
     echo "  Add to your shell profile:"
-    echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo "    export PATH=\"\$GOPATH_BIN:\$PATH\""
 fi
 
 # --- Install shell completions ---

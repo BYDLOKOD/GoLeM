@@ -1,5 +1,0 @@
-feature: output-streaming
-files:
-  - tail_scenario.json
-  - tail_already_done.json
-  - tail_not_found.json

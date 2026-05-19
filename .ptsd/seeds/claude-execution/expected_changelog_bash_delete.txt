@@ -1,1 +1,0 @@
-DELETE via bash: rm -rf /tmp/old-data

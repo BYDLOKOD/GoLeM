@@ -1,4 +1,0 @@
-{
-  "filter": "--status bogus",
-  "expected_error": "err:user Unknown status: bogus. Valid: queued, running, done, failed, timeout, killed, permission_error"
-}

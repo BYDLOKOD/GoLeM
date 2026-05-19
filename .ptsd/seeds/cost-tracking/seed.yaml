@@ -1,7 +1,0 @@
-feature: cost-tracking
-files:
-  - usage_data.json
-  - cost_single.json
-  - cost_summary.json
-  - cost_no_data.json
-  - cost_json.json

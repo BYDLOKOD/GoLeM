@@ -1,3 +1,0 @@
-model = "glm-5"
-permission_mode = "yolo"
-max_parallel = 3

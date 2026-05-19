@@ -1,5 +1,0 @@
-{
-  "key": "bogus_key",
-  "value": "anything",
-  "expected_error": "err:user Unknown config key: bogus_key"
-}

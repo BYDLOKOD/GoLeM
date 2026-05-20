@@ -1,7 +1,0 @@
-{
-  "description": "Session ignores -t flag",
-  "flags": ["-t", "300", "-d", "/home/veschin/work/project"],
-  "expected_timeout_ignored": true,
-  "expected_debug_message": "Timeout flag ignored for session mode",
-  "expected_workdir": "/home/veschin/work/project"
-}

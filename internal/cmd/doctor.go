@@ -10,7 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,8 +39,6 @@ type DoctorOptions struct {
 	HTTPTimeout time.Duration
 	// SubagentsRoot is used to count running jobs for slot reporting.
 	SubagentsRoot string
-	// APIRPS is the configured api_rps value (for slot reporting).
-	APIRPS int
 	// OpusModel, SonnetModel, HaikuModel are the configured model names.
 	OpusModel   string
 	SonnetModel string
@@ -65,10 +63,6 @@ func DoctorCmd(opts DoctorOptions, w io.Writer) error {
 	httpTimeout := opts.HTTPTimeout
 	if httpTimeout == 0 {
 		httpTimeout = 5 * time.Second
-	}
-	apiRPS := opts.APIRPS
-	if apiRPS == 0 {
-		apiRPS = 3
 	}
 	opusModel := opts.OpusModel
 	if opusModel == "" {
@@ -98,7 +92,7 @@ func DoctorCmd(opts DoctorOptions, w io.Writer) error {
 	checks = append(checks, checkModels(opusModel, sonnetModel, haikuModel))
 
 	// Check 5: Slots usage.
-	checks = append(checks, checkSlots(opts.SubagentsRoot, apiRPS))
+	checks = append(checks, checkSlots(opts.SubagentsRoot))
 
 	// Check 6: Platform.
 	checks = append(checks, checkPlatform())
@@ -189,7 +183,7 @@ func checkZAIReachable(endpoint string, timeout time.Duration) CheckResult {
 			Detail: fmt.Sprintf("%s connection timed out after %dms", endpoint, timeout.Milliseconds()),
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusOK {
 		return CheckResult{
@@ -214,8 +208,9 @@ func checkModels(opus, sonnet, haiku string) CheckResult {
 	}
 }
 
-// checkSlots counts running jobs and compares against api_rps.
-func checkSlots(subagentsRoot string, apiRPS int) CheckResult {
+// checkSlots counts running jobs. Global concurrency is unlimited; only
+// per-model proxy limits apply.
+func checkSlots(subagentsRoot string) CheckResult {
 	running := 0
 	if subagentsRoot != "" {
 		running = countRunningJobs(subagentsRoot)
@@ -223,7 +218,7 @@ func checkSlots(subagentsRoot string, apiRPS int) CheckResult {
 	return CheckResult{
 		Name:   "slots",
 		Status: "OK",
-		Detail: fmt.Sprintf("%d/%d slots in use", running, apiRPS),
+		Detail: fmt.Sprintf("%d running (unlimited)", running),
 	}
 }
 
@@ -315,7 +310,7 @@ func checkProxy(configDir string) CheckResult {
 			Detail: fmt.Sprintf("proxy running on port %d but /health unreachable: %v", port, err),
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var hr proxyHealthResponse
 	if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
@@ -365,7 +360,6 @@ func ConfigShowCmd(opts ConfigShowOptions, w io.Writer) error {
 		"sonnet_model":       config.DefaultModel,
 		"haiku_model":        config.DefaultModel,
 		"permission_mode":    config.DefaultPermissionMode,
-		"api_rps":            strconv.Itoa(config.DefaultAPIRPS),
 		"debug":              "false",
 		"zai_base_url":       config.ZaiBaseURL,
 		"zai_api_timeout_ms": config.ZaiAPITimeoutMs,
@@ -389,7 +383,6 @@ func ConfigShowCmd(opts ConfigShowOptions, w io.Writer) error {
 		"sonnet_model":    "GLM_SONNET_MODEL",
 		"haiku_model":     "GLM_HAIKU_MODEL",
 		"permission_mode": "GLM_PERMISSION_MODE",
-		"api_rps":         "GLM_API_RPS",
 		"debug":           "GLM_DEBUG",
 	}
 
@@ -400,7 +393,6 @@ func ConfigShowCmd(opts ConfigShowOptions, w io.Writer) error {
 		"sonnet_model",
 		"haiku_model",
 		"permission_mode",
-		"api_rps",
 		"debug",
 		"zai_base_url",
 		"zai_api_timeout_ms",
@@ -412,27 +404,15 @@ func ConfigShowCmd(opts ConfigShowOptions, w io.Writer) error {
 		value := defaults[key]
 		source := "(default)"
 
-		// Check TOML. For api_rps, also accept legacy key max_parallel for backward compat.
+		// Check TOML.
 		if v, ok := tomlValues[key]; ok {
 			value = v
 			source = "(config)"
-		} else if key == "api_rps" {
-			if v, ok := tomlValues["max_parallel"]; ok {
-				value = v
-				source = "(config)"
-			}
 		}
 
 		// Check env var (overrides TOML).
 		if envKey, ok := envMappings[key]; ok {
 			if v := getenv(envKey); v != "" {
-				value = v
-				source = "(env)"
-			}
-		}
-		// For api_rps, also accept GLM_MAX_PARALLEL for backward compat (GLM_API_RPS takes priority).
-		if key == "api_rps" {
-			if v := getenv("GLM_MAX_PARALLEL"); v != "" && getenv("GLM_API_RPS") == "" {
 				value = v
 				source = "(env)"
 			}
@@ -456,7 +436,7 @@ func ConfigShowCmd(opts ConfigShowOptions, w io.Writer) error {
 // parseTOMLToMap parses a simple TOML file into a key→value map.
 func parseTOMLToMap(data string) map[string]string {
 	result := map[string]string{}
-	for _, line := range strings.Split(data, "\n") {
+	for line := range strings.SplitSeq(data, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "[") {
 			continue
@@ -480,7 +460,6 @@ var KnownConfigKeys = []string{
 	"sonnet_model",
 	"haiku_model",
 	"permission_mode",
-	"api_rps",
 	"debug",
 }
 
@@ -498,14 +477,7 @@ type ConfigSetOptions struct {
 // Returns err:user for unknown keys or invalid values.
 func ConfigSetCmd(opts ConfigSetOptions) error {
 	// Validate the key.
-	known := false
-	for _, k := range KnownConfigKeys {
-		if k == opts.Key {
-			known = true
-			break
-		}
-	}
-	if !known {
+	if !slices.Contains(KnownConfigKeys, opts.Key) {
 		return fmt.Errorf("err:user \"Unknown config key: %s\"", opts.Key)
 	}
 
@@ -533,11 +505,6 @@ func ConfigSetCmd(opts ConfigSetOptions) error {
 // validateConfigValue validates a value for the given config key.
 func validateConfigValue(key, value string) error {
 	switch key {
-	case "api_rps":
-		n, err := strconv.Atoi(value)
-		if err != nil || n < 0 {
-			return fmt.Errorf("err:user \"Invalid value for api_rps: %s (must be a non-negative integer)\"", value)
-		}
 	case "permission_mode":
 		validModes := map[string]bool{
 			"bypassPermissions": true,
@@ -594,9 +561,6 @@ func setTOMLKey(existing, key, value string) string {
 // formatTOMLValue formats a value for TOML output based on the key type.
 func formatTOMLValue(key, value string) string {
 	switch key {
-	case "api_rps":
-		// Integer values — no quotes.
-		return value
 	case "debug":
 		// Boolean — no quotes.
 		return value

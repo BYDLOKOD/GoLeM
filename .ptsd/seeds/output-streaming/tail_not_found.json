@@ -1,4 +1,0 @@
-{
-  "job_id": "job-nonexistent",
-  "expected_error": "err:not_found Job not found: job-nonexistent"
-}

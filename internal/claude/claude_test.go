@@ -1,6 +1,7 @@
 package claude_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,10 +11,11 @@ import (
 	"time"
 
 	"github.com/veschin/GoLeM/internal/claude"
+	"github.com/veschin/GoLeM/internal/event"
 )
 
-// seedDir is the absolute path to the claude-execution seed directory.
-const seedDir = "/home/veschin/work/GoLeM/.ptsd/seeds/claude-execution"
+// seedDir is the relative path to the claude package test fixtures.
+const seedDir = "testdata"
 
 // readSeed reads a file from the seed directory and returns its contents.
 func readSeed(t *testing.T, name string) string {
@@ -131,6 +133,101 @@ func TestCLAUDECODEAndCLAUDE_CODE_ENTRYPOINTAreUnset(t *testing.T) {
 // AC3: CLI flag construction
 // --------------------------------------------------------------------------
 
+// --------------------------------------------------------------------------
+// CLAUDE_CODE_* env vars must not be injected
+// --------------------------------------------------------------------------
+
+// TestBuildEnvDoesNotInjectCLAUDE_CODE_EnvVars verifies that BuildEnv does
+// not add personal CLAUDE_CODE_* variables that were not already present in
+// the host environment before the call. When the test runs inside a Claude
+// Code shell the host already has these set; we temporarily clear them so the
+// absence of explicit injection is observable.
+func TestBuildEnvDoesNotInjectCLAUDE_CODE_EnvVars(t *testing.T) {
+	keys := []string{
+		"CLAUDE_CODE_NO_FLICKER",
+		"CLAUDE_CODE_NEW_INIT",
+		"CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING",
+		"CLAUDE_CODE_INVESTIGATE_FIRST",
+		"CLAUDE_CODE_ALWAYS_ENABLE_EFFORT",
+	}
+
+	// Clear keys from host env for the duration of this test.
+	for _, key := range keys {
+		prev, had := os.LookupEnv(key)
+		if had {
+			os.Unsetenv(key) //nolint:errcheck
+			t.Cleanup(func() { os.Setenv(key, prev) })
+		}
+	}
+
+	env := envMap(claude.BuildEnv(claude.Config{}))
+	for _, key := range keys {
+		if _, ok := env[key]; ok {
+			t.Errorf("BuildEnv must not inject %q (was not in host env)", key)
+		}
+	}
+}
+
+// --------------------------------------------------------------------------
+// --effort flag
+// --------------------------------------------------------------------------
+
+// TestBuildFlagsWithEffort verifies that a non-empty Effort field produces
+// --effort <value> in the CLI flags.
+func TestBuildFlagsWithEffort(t *testing.T) {
+	cfg := claude.Config{Effort: "max"}
+	flags := claude.BuildFlags(cfg)
+	joined := strings.Join(flags, " ")
+
+	if !strings.Contains(joined, "--effort max") {
+		t.Errorf("flags missing --effort max; got: %q", joined)
+	}
+}
+
+// TestBuildFlagsWithEmptyEffortOmitsFlag verifies that an empty Effort field
+// does NOT add --effort to the CLI flags.
+func TestBuildFlagsWithEmptyEffortOmitsFlag(t *testing.T) {
+	cfg := claude.Config{Effort: ""}
+	flags := claude.BuildFlags(cfg)
+	joined := strings.Join(flags, " ")
+
+	if strings.Contains(joined, "--effort") {
+		t.Errorf("flags should not contain --effort when empty; got: %q", joined)
+	}
+}
+
+// --------------------------------------------------------------------------
+// --exclude-dynamic-system-prompt-sections flag
+// --------------------------------------------------------------------------
+
+// TestBuildFlagsWithExcludeDynamicSections verifies that when
+// ExcludeDynamicSections is true the long flag is present.
+func TestBuildFlagsWithExcludeDynamicSections(t *testing.T) {
+	cfg := claude.Config{ExcludeDynamicSections: true}
+	flags := claude.BuildFlags(cfg)
+	joined := strings.Join(flags, " ")
+
+	if !strings.Contains(joined, "--exclude-dynamic-system-prompt-sections") {
+		t.Errorf("flags missing --exclude-dynamic-system-prompt-sections; got: %q", joined)
+	}
+}
+
+// TestBuildFlagsWithExcludeDynamicSectionsFalse verifies that when
+// ExcludeDynamicSections is false the flag is NOT added.
+func TestBuildFlagsWithExcludeDynamicSectionsFalse(t *testing.T) {
+	cfg := claude.Config{ExcludeDynamicSections: false}
+	flags := claude.BuildFlags(cfg)
+	joined := strings.Join(flags, " ")
+
+	if strings.Contains(joined, "--exclude-dynamic-system-prompt-sections") {
+		t.Errorf("flags should not contain --exclude-dynamic-system-prompt-sections when false; got: %q", joined)
+	}
+}
+
+// --------------------------------------------------------------------------
+// AC3: CLI flag construction
+// --------------------------------------------------------------------------
+
 // TestBuildCLIFlagsWithBypassPermissionsMode verifies the full flag set when
 // permission mode is "bypassPermissions".
 func TestBuildCLIFlagsWithBypassPermissionsMode(t *testing.T) {
@@ -193,6 +290,32 @@ func TestBuildCLIFlagsWithPlanPermissionMode(t *testing.T) {
 	}
 }
 
+// TestBuildFlagsSystemPromptIsPassedRawWithoutExtraQuoting verifies that the
+// system prompt value is forwarded to --append-system-prompt as a raw string,
+// not wrapped in Go-style double-quotes.  A prompt containing embedded double
+// quotes (e.g. Say "hello") must appear in the flags slice verbatim, not as
+// "Say \"hello\"".
+func TestBuildFlagsSystemPromptIsPassedRawWithoutExtraQuoting(t *testing.T) {
+	raw := `Say "hello"`
+	cfg := claude.Config{SystemPrompt: raw}
+	flags := claude.BuildFlags(cfg)
+
+	// Find the argument that follows --append-system-prompt.
+	for i, f := range flags {
+		if f == "--append-system-prompt" {
+			if i+1 >= len(flags) {
+				t.Fatal("--append-system-prompt flag has no following argument")
+			}
+			got := flags[i+1]
+			if got != raw {
+				t.Errorf("--append-system-prompt value = %q, want %q", got, raw)
+			}
+			return
+		}
+	}
+	t.Error("--append-system-prompt flag not found in BuildFlags output")
+}
+
 // TestBuildCLIFlagsWithDefaultPermissionMode verifies that "default" mode
 // uses --permission-mode default.
 func TestBuildCLIFlagsWithDefaultPermissionMode(t *testing.T) {
@@ -224,7 +347,7 @@ func TestExecuteClaudeInSpecifiedWorkingDirectoryWithTimeout(t *testing.T) {
 		JobDir:      jobDir,
 	}
 
-	code, err := claude.Execute(cfg)
+	code, err := claude.Execute(t.Context(), cfg)
 	if err == nil {
 		t.Fatal("expected error for nonexistent working directory, got nil")
 	}
@@ -500,7 +623,7 @@ func TestSignalExitCodeSIGKILL(t *testing.T) {
 		Prompt:      "test sigkill",
 	}
 
-	exitCode, _ := claude.Execute(cfg)
+	exitCode, _ := claude.Execute(t.Context(), cfg)
 	if exitCode != 137 {
 		t.Errorf("exit code = %d, want 137 (128 + SIGKILL)", exitCode)
 	}
@@ -528,7 +651,7 @@ func TestSignalExitCodeSIGTERM(t *testing.T) {
 		Prompt:      "test sigterm",
 	}
 
-	exitCode, _ := claude.Execute(cfg)
+	exitCode, _ := claude.Execute(t.Context(), cfg)
 	if exitCode != 143 {
 		t.Errorf("exit code = %d, want 143 (128 + SIGTERM)", exitCode)
 	}
@@ -643,7 +766,7 @@ func TestClaudeCLINotFoundInPATH(t *testing.T) {
 		JobDir:  jobDir,
 	}
 
-	code, err := claude.Execute(cfg)
+	code, err := claude.Execute(t.Context(), cfg)
 	if err == nil {
 		t.Fatal("expected dependency error, got nil")
 	}
@@ -676,7 +799,7 @@ func TestPython3IsNotRequired(t *testing.T) {
 		JobDir:  jobDir,
 	}
 
-	_, err := claude.Execute(cfg)
+	_, err := claude.Execute(t.Context(), cfg)
 	// The only acceptable error here is NOT a dependency error — the CLI ran
 	// (and exited 0) so there should be no error at all, or if it fails it
 	// must not be the "claude CLI not found" dependency error.
@@ -724,7 +847,7 @@ func TestMalformedJSONInRawJSON(t *testing.T) {
 
 	err := claude.ParseRawJSON(jobDir)
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 	var stderrBuf strings.Builder
 	buf := make([]byte, 4096)
@@ -737,7 +860,7 @@ func TestMalformedJSONInRawJSON(t *testing.T) {
 			break
 		}
 	}
-	r.Close()
+	_ = r.Close()
 
 	if err != nil {
 		t.Fatalf("ParseRawJSON must not return an error for malformed JSON, got: %v", err)
@@ -789,7 +912,7 @@ func TestWorkingDirectoryDoesNotExist(t *testing.T) {
 		JobDir:  jobDir,
 	}
 
-	code, err := claude.Execute(cfg)
+	code, err := claude.Execute(t.Context(), cfg)
 	if err == nil {
 		t.Fatal("expected error for nonexistent directory, got nil")
 	}
@@ -830,7 +953,7 @@ func TestTimeoutFiresDuringExecution(t *testing.T) {
 		Prompt:      "long-running task",
 	}
 
-	exitCode, _ := claude.Execute(cfg)
+	exitCode, _ := claude.Execute(t.Context(), cfg)
 	status := claude.MapStatus(exitCode, "")
 
 	if status != "timeout" {
@@ -878,7 +1001,7 @@ while true; do :; done
 		Prompt:      "spawn children",
 	}
 
-	exitCode, _ := claude.Execute(cfg)
+	exitCode, _ := claude.Execute(t.Context(), cfg)
 	if exitCode != 124 {
 		t.Fatalf("exit code = %d, want 124 (timeout)", exitCode)
 	}
@@ -951,5 +1074,313 @@ func TestBashCommandLongerThan80CharsIsTruncatedInChangelog(t *testing.T) {
 	cmdPart := strings.TrimPrefix(fsLine, "FS: ")
 	if len(cmdPart) > 80 {
 		t.Errorf("command part is %d chars, want ≤ 80; got: %q", len(cmdPart), cmdPart)
+	}
+}
+
+// --------------------------------------------------------------------------
+// Event producer tests (P2.1)
+// --------------------------------------------------------------------------
+
+// TestExecute_NilBus_NoPanic verifies that Execute does not panic when the
+// Bus field is nil (the default).
+func TestExecute_NilBus_NoPanic(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping real-claude integration test in short mode")
+	}
+	dir := t.TempDir()
+	cfg := claude.Config{
+		Prompt:  "echo test",
+		WorkDir: dir,
+		JobDir:  filepath.Join(dir, "job"),
+		Bus:     nil,
+	}
+	_ = os.MkdirAll(cfg.JobDir, 0o755)
+
+	// Will fail because claude CLI may not be available, but must not panic.
+	_, _ = claude.Execute(t.Context(), cfg)
+}
+
+// TestExecute_PublishesJobRunningAndDone verifies that Execute publishes a
+// JobRunning event before the subprocess starts and a JobDone event after
+// it exits successfully.
+func TestExecute_PublishesJobRunningAndDone(t *testing.T) {
+	// Create a fake claude script that exits immediately.
+	binDir := t.TempDir()
+	claudePath := filepath.Join(binDir, "claude")
+	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+
+	bus := event.NewBus()
+	defer bus.Close()
+
+	ch := bus.Subscribe(event.JobRunning, event.JobDone, event.JobFailed, event.JobTimeout)
+
+	jobDir := t.TempDir()
+	workDir := t.TempDir()
+
+	cfg := claude.Config{
+		WorkDir:     workDir,
+		JobDir:      jobDir,
+		TimeoutSecs: 10,
+		Prompt:      "test events",
+		Bus:         bus,
+		JobID:       "test-job-123",
+		ProjectID:   "test-project",
+		Model:       "test-model",
+	}
+
+	exitCode, _ := claude.Execute(t.Context(), cfg)
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, want 0", exitCode)
+	}
+
+	// First event should be JobRunning.
+	select {
+	case e := <-ch:
+		if e.Type != event.JobRunning {
+			t.Fatalf("first event type = %v, want JobRunning", e.Type)
+		}
+		if e.JobID != "test-job-123" {
+			t.Errorf("JobRunning job_id = %v, want test-job-123", e.JobID)
+		}
+		data, ok := e.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("JobRunning Data is not map[string]any: %T", e.Data)
+		}
+		if data["model"] != "test-model" {
+			t.Errorf("model = %v, want test-model", data["model"])
+		}
+		if data["project_id"] != "test-project" {
+			t.Errorf("project_id = %v, want test-project", data["project_id"])
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for JobRunning event")
+	}
+
+	// Second event should be JobDone.
+	select {
+	case e := <-ch:
+		if e.Type != event.JobDone {
+			t.Fatalf("second event type = %v, want JobDone", e.Type)
+		}
+		if e.JobID != "test-job-123" {
+			t.Errorf("JobDone job_id = %v, want test-job-123", e.JobID)
+		}
+		data, ok := e.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("JobDone Data is not map[string]any: %T", e.Data)
+		}
+		if data["exit_code"] != 0 {
+			t.Errorf("exit_code = %v, want 0", data["exit_code"])
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for JobDone event")
+	}
+}
+
+// TestExecute_PublishesJobFailed verifies that Execute publishes a JobFailed
+// event when the subprocess exits with a non-zero code.
+func TestExecute_PublishesJobFailed(t *testing.T) {
+	// Create a fake claude script that exits with error.
+	binDir := t.TempDir()
+	claudePath := filepath.Join(binDir, "claude")
+	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\necho 'some error' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+
+	bus := event.NewBus()
+	defer bus.Close()
+
+	ch := bus.Subscribe(event.JobRunning, event.JobDone, event.JobFailed, event.JobTimeout)
+
+	jobDir := t.TempDir()
+	workDir := t.TempDir()
+
+	cfg := claude.Config{
+		WorkDir:     workDir,
+		JobDir:      jobDir,
+		TimeoutSecs: 10,
+		Prompt:      "test failure",
+		Bus:         bus,
+		JobID:       "test-job-fail",
+		ProjectID:   "test-project",
+	}
+
+	exitCode, _ := claude.Execute(t.Context(), cfg)
+	if exitCode == 0 {
+		t.Fatalf("exit code = 0, want non-zero")
+	}
+
+	// Skip the JobRunning event.
+	select {
+	case e := <-ch:
+		if e.Type != event.JobRunning {
+			t.Fatalf("first event type = %v, want JobRunning", e.Type)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for JobRunning event")
+	}
+
+	// Second event should be JobFailed.
+	select {
+	case e := <-ch:
+		if e.Type != event.JobFailed {
+			t.Fatalf("second event type = %v, want JobFailed", e.Type)
+		}
+		if e.JobID != "test-job-fail" {
+			t.Errorf("JobFailed job_id = %v, want test-job-fail", e.JobID)
+		}
+		data, ok := e.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("JobFailed Data is not map[string]any: %T", e.Data)
+		}
+		if data["exit_code"] != 1 {
+			t.Errorf("exit_code = %v, want 1", data["exit_code"])
+		}
+		stderr, _ := data["stderr"].(string)
+		if !strings.Contains(stderr, "some error") {
+			t.Errorf("stderr = %q, want to contain 'some error'", stderr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for JobFailed event")
+	}
+}
+
+// TestExecute_PublishesJobTimeout verifies that Execute publishes a JobTimeout
+// event when the subprocess exceeds its time limit.
+func TestExecute_PublishesJobTimeout(t *testing.T) {
+	// Create a fake claude script that loops forever.
+	binDir := t.TempDir()
+	claudePath := filepath.Join(binDir, "claude")
+	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\nwhile true; do :; done\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+
+	bus := event.NewBus()
+	defer bus.Close()
+
+	ch := bus.Subscribe(event.JobRunning, event.JobDone, event.JobFailed, event.JobTimeout)
+
+	jobDir := t.TempDir()
+	workDir := t.TempDir()
+
+	cfg := claude.Config{
+		WorkDir:     workDir,
+		JobDir:      jobDir,
+		TimeoutSecs: 1,
+		Prompt:      "test timeout",
+		Bus:         bus,
+		JobID:       "test-job-timeout",
+		ProjectID:   "test-project",
+	}
+
+	exitCode, _ := claude.Execute(t.Context(), cfg)
+	if exitCode != 124 {
+		t.Fatalf("exit code = %d, want 124 (timeout)", exitCode)
+	}
+
+	// Skip the JobRunning event.
+	select {
+	case e := <-ch:
+		if e.Type != event.JobRunning {
+			t.Fatalf("first event type = %v, want JobRunning", e.Type)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for JobRunning event")
+	}
+
+	// Second event should be JobTimeout.
+	select {
+	case e := <-ch:
+		if e.Type != event.JobTimeout {
+			t.Fatalf("second event type = %v, want JobTimeout", e.Type)
+		}
+		if e.JobID != "test-job-timeout" {
+			t.Errorf("JobTimeout job_id = %v, want test-job-timeout", e.JobID)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for JobTimeout event")
+	}
+}
+
+// TestExecute_RespectsParentContextCancellation verifies that cancelling the
+// context passed to Execute terminates the subprocess and returns exit code
+// 124 (timeout). This is the regression test for the previous behavior, where
+// Execute discarded the caller's context entirely — pipeline cancellation
+// could not stop in-flight Claude subprocesses.
+//
+// The fake claude script spins forever. The local TimeoutSecs is set high
+// (60s) so only the external context cancellation can stop it. The test
+// expects Execute to return within a couple of seconds of Cancel().
+func TestExecute_RespectsParentContextCancellation(t *testing.T) {
+	binDir := t.TempDir()
+	claudePath := filepath.Join(binDir, "claude")
+	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\nwhile true; do sleep 1; done\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+
+	jobDir := t.TempDir()
+	workDir := t.TempDir()
+
+	cfg := claude.Config{
+		WorkDir:     workDir,
+		JobDir:      jobDir,
+		TimeoutSecs: 60, // intentionally larger than the test budget
+		Prompt:      "test parent cancel",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Cancel after a short delay; Execute must observe this and tear down.
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	exitCode, _ := claude.Execute(ctx, cfg)
+	elapsed := time.Since(start)
+
+	if elapsed > 10*time.Second {
+		t.Fatalf("Execute did not honor parent cancellation: returned after %v", elapsed)
+	}
+	if exitCode != 124 {
+		t.Errorf("exit code = %d, want 124 (timeout) after parent context cancellation", exitCode)
+	}
+}
+
+// TestExecute_NilContextSafe verifies that passing nil for the parent context
+// is treated as Background(), so the existing CLI callers that do not have a
+// context need not synthesize one.
+func TestExecute_NilContextSafe(t *testing.T) {
+	binDir := t.TempDir()
+	claudePath := filepath.Join(binDir, "claude")
+	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+
+	jobDir := t.TempDir()
+	workDir := t.TempDir()
+
+	cfg := claude.Config{
+		WorkDir:     workDir,
+		JobDir:      jobDir,
+		TimeoutSecs: 5,
+		Prompt:      "nil ctx",
+	}
+
+	// Must not panic when parent is nil; exit code should reflect the script.
+	// Use a typed nil variable so static analyzers see the deliberate contract
+	// without firing SA1012-style "nil context" warnings.
+	var nilCtx context.Context
+	exitCode, _ := claude.Execute(nilCtx, cfg)
+	if exitCode != 0 {
+		t.Errorf("exit code = %d, want 0 (nil context must behave as Background)", exitCode)
 	}
 }

@@ -339,7 +339,7 @@ func TestLogsAreAdditionallyWrittenToFile(t *testing.T) {
 	lg.Warn("Cleaned 3 stale jobs")
 
 	// Close so writes are flushed.
-	f.Close()
+	_ = f.Close()
 
 	stderrOut := stderrBuf.String()
 	if !strings.Contains(stderrOut, "[+] Job completed successfully") {
@@ -371,7 +371,7 @@ func TestFileLoggingDoesNotSuppressStderrOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create log file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var stderrBuf bytes.Buffer
 	opts := []log.Option{
@@ -384,7 +384,7 @@ func TestFileLoggingDoesNotSuppressStderrOutput(t *testing.T) {
 	lg := log.New(opts...)
 
 	lg.Info("Test message")
-	f.Close()
+	_ = f.Close()
 
 	stderrOut := stderrBuf.String()
 	fileBytes, err := os.ReadFile(logPath)

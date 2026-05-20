@@ -1,9 +1,0 @@
-feature: session-command
-files:
-  - session_defaults.json
-  - session_with_model.json
-  - session_passthrough.json
-  - session_timeout_ignored.json
-  - session_unsafe_with_passthrough.json
-  - session_with_workdir.json
-status: complete

@@ -2,13 +2,16 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
-	"strconv"
+	"time"
 
+	"github.com/veschin/GoLeM/internal/config"
+	"github.com/veschin/GoLeM/internal/dag"
 	"github.com/veschin/GoLeM/internal/job"
+	"github.com/veschin/GoLeM/internal/slot"
+	"github.com/veschin/GoLeM/internal/validation"
 )
 
 // ChainResult holds the outcome of a ChainCmd call.
@@ -25,6 +28,26 @@ type ChainResult struct {
 	JobDirs []string
 }
 
+// ChainStep is a single step in a chain, with optional validation and retry.
+type ChainStep struct {
+	// Prompt is the instruction to execute.
+	Prompt string
+	// Validate is an optional output validation rule checked after successful execution.
+	Validate *validation.ValidationRule
+	// Retry configures automatic retries on failure or validation error.
+	Retry *dag.RetryConfig
+}
+
+// ChainStepsFromPrompts converts a plain prompt list into ChainStep entries
+// with no validation or retry configuration.
+func ChainStepsFromPrompts(prompts []string) []ChainStep {
+	steps := make([]ChainStep, len(prompts))
+	for i, p := range prompts {
+		steps[i] = ChainStep{Prompt: p}
+	}
+	return steps
+}
+
 // ChainFlags holds options specific to the chain subcommand.
 type ChainFlags struct {
 	// Flags embeds the common run flags (Dir, Timeout, Model, etc.).
@@ -33,6 +56,8 @@ type ChainFlags struct {
 	ContinueOnError bool
 	// Prompts is the ordered list of prompts to execute.
 	Prompts []string
+	// Steps is the ordered list of chain steps (takes precedence over Prompts).
+	Steps []ChainStep
 }
 
 // ChainCmd executes a sequence of prompts as separate jobs, injecting the
@@ -44,9 +69,16 @@ type ChainFlags struct {
 // By default the chain stops at the first failure. With ContinueOnError set
 // it continues and still injects stdout from the failed step.
 // The final exit code is 0 only when all steps succeed; 1 if any step failed.
-func ChainCmd(cf *ChainFlags, subagentsRoot, projectID string, stdout, stderr io.Writer) (*ChainResult, error) {
-	prompts := cf.Prompts
-	total := len(prompts)
+//
+// Each step acquires and releases its own concurrency slot via a freshly
+// initialised SlotManager. The cfg parameter provides ZAI API credentials
+// and routing settings required by ExecuteJob.
+func ChainCmd(cf *ChainFlags, cfg *config.Config, subagentsRoot, projectID string, stdout, stderr io.Writer) (*ChainResult, error) {
+	steps := cf.Steps
+	if len(steps) == 0 {
+		steps = ChainStepsFromPrompts(cf.Prompts)
+	}
+	total := len(steps)
 
 	result := &ChainResult{
 		JobDirs: make([]string, 0, total),
@@ -54,101 +86,156 @@ func ChainCmd(cf *ChainFlags, subagentsRoot, projectID string, stdout, stderr io
 
 	prevStdout := ""
 	anyFailed := false
+	// anyValidationFailed tracks whether any step that had a Validate rule
+	// produced a validation failure.  anyValidationConfigured is set whenever
+	// at least one step carries a non-nil Validate rule.  Together they allow
+	// the final exit code to be determined by validation outcomes alone when
+	// validation is in use: a chain whose validated steps all pass succeeds
+	// even if unvalidated steps exit non-zero.
+	anyValidationFailed := false
+	anyValidationConfigured := false
 
-	for i, rawPrompt := range prompts {
+	// Reconcile stale jobs once at the start of the chain.
+	if err := job.Reconcile(subagentsRoot, time.Now()); err != nil {
+		// Non-fatal: log to stderr and continue.
+		_, _ = fmt.Fprintf(stderr, "warn: reconcile: %v\n", err)
+	}
+
+	// One SlotManager per step: Init runs once, then each attempt only does
+	// WaitForSlot (claim) and ExecuteJob's defer does ReleaseSlot. This avoids
+	// the structurally confusing "new manager per attempt" pattern that would
+	// be a real double-claim bug the moment slot limits start being enforced.
+	for i, step := range steps {
 		stepNum := i + 1
 
-		// Print progress to stderr.
-		fmt.Fprintf(stderr, "[%d/%d] Running step %d...\n", stepNum, total, stepNum)
-
-		// Build the prompt for this step.
-		var prompt string
-		if i == 0 {
-			prompt = rawPrompt
-		} else {
-			prompt = BuildChainPrompt(prevStdout, rawPrompt)
+		maxAttempts := 1
+		if step.Retry != nil && step.Retry.MaxAttempts > 1 {
+			maxAttempts = step.Retry.MaxAttempts
 		}
 
-		// Generate a unique job ID and create the job directory.
-		jobID := job.GenerateJobID()
-		j, err := job.NewJob(subagentsRoot, projectID, jobID)
-		if err != nil {
-			return nil, fmt.Errorf("chain step %d: create job: %w", stepNum, err)
-		}
-		jobDir := j.Dir
+		currentPromptText := step.Prompt
+		var stepResult *ExecuteJobResult
 
-		// Write prompt.txt.
-		if err := os.WriteFile(filepath.Join(jobDir, "prompt.txt"), []byte(prompt), 0o644); err != nil {
-			return nil, fmt.Errorf("chain step %d: write prompt.txt: %w", stepNum, err)
+		stepSlotMgr := slot.NewSlotManager(subagentsRoot, 0) // 0 = unlimited
+		if err := stepSlotMgr.Init(); err != nil {
+			return nil, fmt.Errorf("chain step %d: slot init: %w", stepNum, err)
 		}
 
-		// Write workdir file.
-		workdir := cf.Flags.Dir
-		if err := os.WriteFile(filepath.Join(jobDir, "workdir"), []byte(workdir), 0o644); err != nil {
-			return nil, fmt.Errorf("chain step %d: write workdir: %w", stepNum, err)
-		}
-
-		// Write timeout file.
-		timeoutStr := strconv.Itoa(cf.Flags.Timeout)
-		if err := os.WriteFile(filepath.Join(jobDir, "timeout"), []byte(timeoutStr), 0o644); err != nil {
-			return nil, fmt.Errorf("chain step %d: write timeout: %w", stepNum, err)
-		}
-
-		// Write model file.
-		if err := os.WriteFile(filepath.Join(jobDir, "model"), []byte(cf.Flags.Model), 0o644); err != nil {
-			return nil, fmt.Errorf("chain step %d: write model: %w", stepNum, err)
-		}
-
-		// Execute the step: simulate execution by checking if workdir exists.
-		stepExitCode := 0
-		stepStdout := ""
-
-		if workdir != "." {
-			if _, statErr := os.Stat(workdir); os.IsNotExist(statErr) {
-				// Directory not found — this step fails.
-				stepExitCode = 1
-				errMsg := fmt.Sprintf(`err:user "Directory not found: %s"`, workdir)
-				fmt.Fprintln(stderr, errMsg)
-
-				// Write failed status and empty stdout.
-				_ = os.WriteFile(filepath.Join(jobDir, "stdout.txt"), []byte(""), 0o644)
-				_ = os.WriteFile(filepath.Join(jobDir, "status"), []byte(job.StatusFailed), 0o644)
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			// Print progress to stderr.
+			if attempt > 1 {
+				_, _ = fmt.Fprintf(stderr, "[%d/%d] Retrying step %d (attempt %d/%d)...\n", stepNum, total, stepNum, attempt, maxAttempts)
+			} else {
+				_, _ = fmt.Fprintf(stderr, "[%d/%d] Running step %d...\n", stepNum, total, stepNum)
 			}
+
+			// Build the prompt for this step, injecting previous output when present.
+			var prompt string
+			if i == 0 {
+				prompt = currentPromptText
+			} else {
+				prompt = BuildChainPrompt(prevStdout, currentPromptText)
+			}
+
+			// Build per-step flags with the resolved prompt.
+			stepFlags := &Flags{
+				Dir:            cf.Flags.Dir,
+				Timeout:        cf.Flags.Timeout,
+				Model:          cf.Flags.Model,
+				OpusModel:      cf.Flags.OpusModel,
+				SonnetModel:    cf.Flags.SonnetModel,
+				HaikuModel:     cf.Flags.HaikuModel,
+				PermissionMode: cf.Flags.PermissionMode,
+				SystemPrompt:   cf.Flags.SystemPrompt,
+				Constraints:    cf.Flags.Constraints,
+				Prompt:         prompt,
+			}
+
+			// Acquire the slot for this attempt. ExecuteJob's defer releases
+			// it before returning, so the next attempt can claim cleanly.
+			if err := stepSlotMgr.WaitForSlot(); err != nil {
+				return nil, fmt.Errorf("chain step %d: slot wait: %w", stepNum, err)
+			}
+
+			// ExecuteJob runs the claude subprocess and releases the slot via defer.
+			var err error
+			stepResult, err = ExecuteJob(context.Background(), ExecuteJobParams{
+				Cfg:           cfg,
+				Flags:         stepFlags,
+				SubagentsRoot: subagentsRoot,
+				ProjectID:     projectID,
+				AutoDelete:    false,
+				SlotManager:   stepSlotMgr,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("chain step %d: execute: %w", stepNum, err)
+			}
+
+			result.JobDirs = append(result.JobDirs, stepResult.JobDir)
+
+			// When a Validate rule is configured it is the authoritative success
+			// criterion for this step:
+			//   - Validation passes → step is successful (clear any non-zero exit code).
+			//   - Validation fails  → step is failed (retry if attempts remain).
+			// When no Validate rule is configured, fall back to the claude exit code.
+			if step.Validate != nil {
+				anyValidationConfigured = true
+				if verr := step.Validate.Check(stepResult.Stdout); verr != nil {
+					_, _ = fmt.Fprintf(stderr, "[%d/%d] Validation failed for step %d: %v\n", stepNum, total, stepNum, verr)
+					stepResult.ExitCode = 1
+					anyValidationFailed = true
+					if attempt < maxAttempts && step.Retry != nil {
+						anyValidationFailed = false // will retry
+						currentPromptText = step.Prompt + "\n\n" + step.Retry.Feedback
+						continue
+					}
+					break
+				}
+				// Validation passed — treat step as successful regardless of exit code.
+				stepResult.ExitCode = 0
+				break
+			}
+
+			// No validation rule: use the claude exit code directly.
+			if stepResult.ExitCode != 0 {
+				if attempt < maxAttempts && step.Retry != nil {
+					currentPromptText = step.Prompt + "\n\n" + step.Retry.Feedback
+					continue
+				}
+				break
+			}
+
+			break
 		}
 
-		if stepExitCode == 0 {
-			// Step succeeded: write done status and empty stdout.
-			_ = os.WriteFile(filepath.Join(jobDir, "stdout.txt"), []byte(stepStdout), 0o644)
-			_ = os.WriteFile(filepath.Join(jobDir, "status"), []byte(job.StatusDone), 0o644)
-		}
-
-		// Read back stdout from the job dir for injection into the next step.
-		stdoutData, _ := os.ReadFile(filepath.Join(jobDir, "stdout.txt"))
-		prevStdout = string(stdoutData)
-
-		// Track results.
-		result.JobDirs = append(result.JobDirs, jobDir)
 		result.StepsExecuted++
 
-		if stepExitCode != 0 {
+		// Use this step's stdout as input for the next step.
+		prevStdout = stepResult.Stdout
+
+		if stepResult.ExitCode != 0 {
 			anyFailed = true
 			if !cf.ContinueOnError {
-				// Stop chain; remaining steps are skipped.
+				// Stop chain; count remaining steps as skipped.
 				result.StepsSkipped = total - stepNum
 				break
 			}
 		}
 	}
 
-	// Set FinalStdout from the last executed step.
-	if len(result.JobDirs) > 0 {
-		lastDir := result.JobDirs[len(result.JobDirs)-1]
-		stdoutData, _ := os.ReadFile(filepath.Join(lastDir, "stdout.txt"))
-		result.FinalStdout = string(stdoutData)
-	}
+	// Capture final stdout from the last executed step.
+	result.FinalStdout = prevStdout
 
 	// Determine final exit code.
-	if anyFailed {
+	// When at least one step carried a Validate rule the overall success is
+	// decided by validation outcomes: only validation failures produce a
+	// non-zero exit.  When no step used validation the raw execution exit
+	// codes determine the result.
+	if anyValidationConfigured {
+		if anyValidationFailed {
+			result.ExitCode = 1
+		}
+	} else if anyFailed {
 		result.ExitCode = 1
 	}
 

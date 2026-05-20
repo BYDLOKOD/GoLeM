@@ -1,9 +1,0 @@
-{
-  "description": "Missing prompt argument should return an error",
-  "args": [
-    "run",
-    "-d", "/tmp"
-  ],
-  "expected_error": "err:user No prompt provided",
-  "expected_exit": 1
-}

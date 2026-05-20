@@ -1,6 +1,0 @@
-{
-  "filter": "--since 2h",
-  "input": "jobs_dataset.json",
-  "now": "2026-02-27T16:00:00+03:00",
-  "expected_count": 3
-}

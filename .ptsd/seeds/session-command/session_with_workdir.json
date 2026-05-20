@@ -1,9 +1,0 @@
-{
-  "description": "Session changes to specified directory before exec",
-  "flags": ["-d", "/home/veschin/work/other-project"],
-  "expected_workdir": "/home/veschin/work/other-project",
-  "expected_env": {
-    "ANTHROPIC_AUTH_TOKEN": "sk-zai-key",
-    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic"
-  }
-}

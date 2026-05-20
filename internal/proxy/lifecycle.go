@@ -29,25 +29,25 @@ type healthResponse struct {
 
 // EnsureRunning returns the proxy port, starting the daemon if it is not already running.
 // glmBinary is the path to the glm executable, configDir is the directory used for
-// PID/port/log files, targetURL is the upstream URL, concurrency limits parallel
-// requests, and idleTimeout controls how long the proxy waits before shutting itself
-// down when idle.
+// PID/port/log files, targetURL is the upstream URL, and idleTimeout controls how long
+// the proxy waits before shutting itself down when idle. Concurrency is controlled
+// exclusively via per-model limits in the [models] TOML section; no global limit is applied.
 //
 // A file-based flock around the check-and-spawn sequence prevents concurrent callers
 // from spawning duplicate proxy instances (TOCTOU race).
-func EnsureRunning(glmBinary, configDir, targetURL string, concurrency int, idleTimeout time.Duration) (int, error) {
+func EnsureRunning(glmBinary, configDir, targetURL string, idleTimeout time.Duration) (int, error) {
 	// Acquire exclusive flock to serialize the IsRunning check + spawn.
 	lockPath := filepath.Join(configDir, lockFile)
 	lk, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return 0, fmt.Errorf("proxy: open lock file: %w", err)
 	}
-	defer lk.Close()
+	defer func() { _ = lk.Close() }()
 
 	if err := syscall.Flock(int(lk.Fd()), syscall.LOCK_EX); err != nil {
 		return 0, fmt.Errorf("proxy: flock: %w", err)
 	}
-	defer syscall.Flock(int(lk.Fd()), syscall.LOCK_UN)
+	defer func() { _ = syscall.Flock(int(lk.Fd()), syscall.LOCK_UN) }()
 
 	// Re-check under lock — another caller may have started the proxy already.
 	if port, alive := IsRunning(configDir); alive {
@@ -60,13 +60,12 @@ func EnsureRunning(glmBinary, configDir, targetURL string, concurrency int, idle
 	if err != nil {
 		return 0, fmt.Errorf("proxy: open log file: %w", err)
 	}
-	defer lf.Close()
+	defer func() { _ = lf.Close() }()
 
 	cmd := exec.Command(
 		glmBinary,
 		"_proxy",
 		"--port", "0",
-		"--concurrency", strconv.Itoa(concurrency),
 		"--idle-timeout", strconv.Itoa(int(idleTimeout.Seconds())),
 		"--target", targetURL,
 		"--config-dir", configDir,
@@ -232,7 +231,7 @@ func checkHealth(port int, timeout time.Duration) bool {
 	if err != nil {
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode == http.StatusOK
 }
 
@@ -253,7 +252,7 @@ func waitHealthy(configDir string, total, interval time.Duration) (int, error) {
 				url := fmt.Sprintf("http://localhost:%d/health", port)
 				resp, err := client.Get(url)
 				if err == nil {
-					defer resp.Body.Close()
+					defer func() { _ = resp.Body.Close() }()
 					if resp.StatusCode == http.StatusOK {
 						// Try to extract port from response body; fall back to file value.
 						var hr healthResponse
@@ -281,16 +280,16 @@ func writeAtomic(path, data string) error {
 	tmpName := tmp.Name()
 
 	if _, err := tmp.WriteString(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	return nil

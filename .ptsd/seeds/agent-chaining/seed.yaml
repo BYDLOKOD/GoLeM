@@ -1,7 +1,0 @@
-feature: agent-chaining
-files:
-  - chain_happy.json
-  - chain_failure_stop.json
-  - chain_single_prompt.json
-  - chain_continue_on_error.json
-  - chain_empty_stdout.json

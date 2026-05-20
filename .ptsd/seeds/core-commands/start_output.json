@@ -1,7 +1,0 @@
-{
-  "description": "Start command creates a job and prints only the job ID to stdout",
-  "job_id": "job-20260227-143205-a8f3b1c2",
-  "expected_stdout": "job-20260227-143205-a8f3b1c2\n",
-  "expected_exit": 0,
-  "notes": "Job ID format: job-YYYYMMDD-HHMMSS-XXXXXXXX where X is 4 random hex bytes. PID must be written to pid.txt BEFORE the job ID is printed to stdout."
-}

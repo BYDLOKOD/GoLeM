@@ -1,5 +1,0 @@
-{
-  "description": "glm update when repo has diverged",
-  "expected_error": "err:user \"Cannot fast-forward, repository has diverged\"",
-  "expected_exit_code": 1
-}

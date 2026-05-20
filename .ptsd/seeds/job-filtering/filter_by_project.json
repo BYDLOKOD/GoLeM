@@ -1,5 +1,0 @@
-{
-  "filter": "--project my-app",
-  "input": "jobs_dataset.json",
-  "expected_count": 4
-}

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/veschin/GoLeM/internal/event"
 )
 
 // Config holds the parameters needed to invoke the Claude CLI.
@@ -24,13 +26,20 @@ type Config struct {
 	HaikuModel      string
 
 	// Execution parameters.
-	PermissionMode string
-	Model          string
-	SystemPrompt   string
-	Prompt         string
-	WorkDir        string
-	TimeoutSecs    int
-	JobDir         string
+	PermissionMode         string
+	Model                  string
+	SystemPrompt           string
+	Prompt                 string
+	WorkDir                string
+	TimeoutSecs            int
+	JobDir                 string
+	Effort                 string // --effort flag value (e.g. "max")
+	ExcludeDynamicSections bool   // --exclude-dynamic-system-prompt-sections flag
+
+	// Event bus (optional). Nil means no events are published.
+	Bus       *event.Bus
+	JobID     string
+	ProjectID string
 }
 
 // BuildEnv returns a slice of "KEY=VALUE" strings for the Claude subprocess.
@@ -87,7 +96,15 @@ func BuildFlags(cfg Config) []string {
 	flags = append(flags, "--output-format", "json")
 
 	if cfg.SystemPrompt != "" {
-		flags = append(flags, "--append-system-prompt", fmt.Sprintf("%q", cfg.SystemPrompt))
+		flags = append(flags, "--append-system-prompt", cfg.SystemPrompt)
+	}
+
+	if cfg.Effort != "" {
+		flags = append(flags, "--effort", cfg.Effort)
+	}
+
+	if cfg.ExcludeDynamicSections {
+		flags = append(flags, "--exclude-dynamic-system-prompt-sections")
 	}
 
 	if cfg.PermissionMode == "bypassPermissions" {
@@ -104,12 +121,21 @@ func BuildFlags(cfg Config) []string {
 // stdout to raw.json and stderr to stderr.txt, then returns the process exit
 // code together with any Go-level error.
 //
+// The parent context is honored: if the caller cancels it (or it carries its
+// own deadline), the subprocess is terminated and exit code 124 is returned,
+// matching the behaviour of the local TimeoutSecs deadline. Passing a nil
+// context is treated as context.Background() so the contract remains safe.
+//
 // Errors:
 //   - 'err:dependency "claude CLI not found in PATH"' (exit 127) when `claude`
 //     is not in PATH.
 //   - 'err:user "Directory not found: <path>"' (exit 1) when cfg.WorkDir does
 //     not exist.
-func Execute(cfg Config) (int, error) {
+func Execute(parent context.Context, cfg Config) (int, error) {
+	if parent == nil {
+		parent = context.Background()
+	}
+
 	// Dependency check: claude CLI must be in PATH.
 	if _, err := exec.LookPath("claude"); err != nil {
 		return 127, fmt.Errorf(`err:dependency "claude CLI not found in PATH"`)
@@ -135,12 +161,13 @@ func Execute(cfg Config) (int, error) {
 		}
 	}
 
-	// Build command.
+	// Build command. The subprocess context derives from the caller's context,
+	// so caller cancellation propagates to the subprocess.
 	timeout := cfg.TimeoutSecs
 	if timeout <= 0 {
 		timeout = 600
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	ctx, cancel := context.WithTimeout(parent, time.Duration(timeout)*time.Second)
 	defer cancel()
 
 	flags := BuildFlags(cfg)
@@ -153,6 +180,18 @@ func Execute(cfg Config) (int, error) {
 	var stdoutBuf, stderrBuf strings.Builder
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
+
+	// Publish JobRunning event before subprocess start.
+	event.Publish(cfg.Bus, event.Event{
+		Type:      event.JobRunning,
+		JobID:     cfg.JobID,
+		Timestamp: time.Now().UTC(),
+		Data: map[string]any{
+			"model":      cfg.Model,
+			"workdir":    cfg.WorkDir,
+			"project_id": cfg.ProjectID,
+		},
+	})
 
 	if err := cmd.Start(); err != nil {
 		return 1, fmt.Errorf("start claude: %w", err)
@@ -200,6 +239,45 @@ func Execute(cfg Config) (int, error) {
 		} else {
 			exitCode = 1
 		}
+	}
+
+	// Publish completion event based on outcome.
+	if ctx.Err() != nil {
+		// Timeout.
+		event.Publish(cfg.Bus, event.Event{
+			Type:      event.JobTimeout,
+			JobID:     cfg.JobID,
+			Timestamp: time.Now().UTC(),
+			Data: map[string]any{
+				"project_id": cfg.ProjectID,
+			},
+		})
+	} else if exitCode == 0 {
+		event.Publish(cfg.Bus, event.Event{
+			Type:      event.JobDone,
+			JobID:     cfg.JobID,
+			Timestamp: time.Now().UTC(),
+			Data: map[string]any{
+				"exit_code":  0,
+				"project_id": cfg.ProjectID,
+			},
+		})
+	} else {
+		// Failed.
+		stderrStr := stderrBuf.String()
+		if len(stderrStr) > 500 {
+			stderrStr = stderrStr[:500]
+		}
+		event.Publish(cfg.Bus, event.Event{
+			Type:      event.JobFailed,
+			JobID:     cfg.JobID,
+			Timestamp: time.Now().UTC(),
+			Data: map[string]any{
+				"exit_code":  exitCode,
+				"stderr":     stderrStr,
+				"project_id": cfg.ProjectID,
+			},
+		})
 	}
 
 	// Write exit_code.txt only on failure.

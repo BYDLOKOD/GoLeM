@@ -1,9 +1,0 @@
-feature: multi-provider
-files:
-  - config_multi_provider.toml
-  - provider_zai.json
-  - provider_custom.json
-  - provider_default.json
-  - provider_not_found.json
-  - provider_missing_key.json
-  - provider_with_model_override.json

@@ -1,5 +1,0 @@
-feature: stale-recovery
-files:
-  - reconcile_scenario.json
-  - reconcile_empty.json
-  - counter_after_reconcile.json

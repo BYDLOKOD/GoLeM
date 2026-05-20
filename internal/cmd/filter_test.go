@@ -72,6 +72,7 @@ func buildDataset(t *testing.T, root string) []JobEntry {
 
 // Scenario: Filter jobs by a single status
 func TestFilterJobsByASingleStatus(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 
@@ -97,6 +98,7 @@ func TestFilterJobsByASingleStatus(t *testing.T) {
 
 // Scenario: Filter jobs by done status
 func TestFilterJobsByDoneStatus(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 
@@ -118,6 +120,7 @@ func TestFilterJobsByDoneStatus(t *testing.T) {
 
 // Scenario: Filter jobs by queued status
 func TestFilterJobsByQueuedStatus(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 
@@ -139,6 +142,7 @@ func TestFilterJobsByQueuedStatus(t *testing.T) {
 
 // Scenario: Filter jobs by multiple statuses
 func TestFilterJobsByMultipleStatuses(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 
@@ -164,6 +168,7 @@ func TestFilterJobsByMultipleStatuses(t *testing.T) {
 
 // Scenario: Filter jobs by all terminal statuses
 func TestFilterJobsByAllTerminalStatuses(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 
@@ -184,6 +189,7 @@ func TestFilterJobsByAllTerminalStatuses(t *testing.T) {
 
 // Scenario: Filter jobs by project ID prefix
 func TestFilterJobsByProjectIDPrefix(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 
@@ -201,6 +207,7 @@ func TestFilterJobsByProjectIDPrefix(t *testing.T) {
 
 // Scenario: Filter jobs by project ID prefix for api-server
 func TestFilterJobsByProjectIDPrefixForApiServer(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 
@@ -213,6 +220,7 @@ func TestFilterJobsByProjectIDPrefixForApiServer(t *testing.T) {
 
 // Scenario: Filter by partial project prefix
 func TestFilterByPartialProjectPrefix(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 
@@ -231,6 +239,7 @@ func TestFilterByPartialProjectPrefix(t *testing.T) {
 
 // Scenario: Filter by project with no matches
 func TestFilterByProjectWithNoMatches(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 
@@ -253,6 +262,7 @@ func fixedNow(s string) func() time.Time {
 
 // Scenario: Filter jobs since a duration using hours
 func TestFilterJobsSinceADurationUsingHours(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 	now := fixedNow("2026-02-27T16:00:00+03:00")
@@ -274,6 +284,7 @@ func TestFilterJobsSinceADurationUsingHours(t *testing.T) {
 
 // Scenario: Filter jobs since a duration using minutes
 func TestFilterJobsSinceADurationUsingMinutes(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 	now := fixedNow("2026-02-27T16:00:00+03:00")
@@ -292,6 +303,7 @@ func TestFilterJobsSinceADurationUsingMinutes(t *testing.T) {
 
 // Scenario: Filter jobs since a duration using days
 func TestFilterJobsSinceADurationUsingDays(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 	now := fixedNow("2026-02-27T16:00:00+03:00")
@@ -309,6 +321,7 @@ func TestFilterJobsSinceADurationUsingDays(t *testing.T) {
 
 // Scenario: Filter jobs since an ISO date
 func TestFilterJobsSinceAnISODate(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 	now := func() time.Time { return time.Now() }
@@ -327,6 +340,7 @@ func TestFilterJobsSinceAnISODate(t *testing.T) {
 
 // Scenario: Filter with since value in the future returns empty list
 func TestFilterWithSinceValueInFutureReturnsEmptyList(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 	now := fixedNow("2026-02-27T16:00:00+03:00")
@@ -348,6 +362,7 @@ func TestFilterWithSinceValueInFutureReturnsEmptyList(t *testing.T) {
 
 // Scenario: Combine status and project filters with AND logic
 func TestCombineStatusAndProjectFiltersWithAndLogic(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 
@@ -368,6 +383,7 @@ func TestCombineStatusAndProjectFiltersWithAndLogic(t *testing.T) {
 
 // Scenario: Combine status and project filters that match no jobs
 func TestCombineStatusAndProjectFiltersThatMatchNoJobs(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 
@@ -387,6 +403,7 @@ func TestCombineStatusAndProjectFiltersThatMatchNoJobs(t *testing.T) {
 
 // Scenario: Combine all three filters
 func TestCombineAllThreeFilters(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 	now := fixedNow("2026-02-27T16:00:00+03:00")
@@ -413,6 +430,7 @@ func TestCombineAllThreeFilters(t *testing.T) {
 
 // Scenario: Combine status and since filters
 func TestCombineStatusAndSinceFilters(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobs := buildDataset(t, root)
 	now := fixedNow("2026-02-27T16:00:00+03:00")
@@ -442,6 +460,7 @@ func TestCombineStatusAndSinceFilters(t *testing.T) {
 
 // Scenario: Filter with JSON output mode
 func TestFilterWithJsonOutputMode(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	buildDataset(t, root)
 
@@ -476,6 +495,7 @@ func TestFilterWithJsonOutputMode(t *testing.T) {
 
 // Scenario: Filter returning empty set in JSON mode
 func TestFilterReturningEmptySetInJsonMode(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	buildDataset(t, root)
 
@@ -500,6 +520,7 @@ func TestFilterReturningEmptySetInJsonMode(t *testing.T) {
 
 // Scenario: Combined filters with JSON output
 func TestCombinedFiltersWithJsonOutput(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	buildDataset(t, root)
 
@@ -535,6 +556,7 @@ func TestCombinedFiltersWithJsonOutput(t *testing.T) {
 
 // Scenario: Invalid status value returns error
 func TestInvalidStatusValueReturnsError(t *testing.T) {
+	t.Parallel()
 	_, err := ParseStatusFilter("bogus")
 	if err == nil {
 		t.Fatal("expected error for invalid status, got nil")
@@ -556,6 +578,7 @@ func TestInvalidStatusValueReturnsError(t *testing.T) {
 
 // Scenario: Invalid status among valid statuses returns error
 func TestInvalidStatusAmongValidStatusesReturnsError(t *testing.T) {
+	t.Parallel()
 	_, err := ParseStatusFilter("running,bogus")
 	if err == nil {
 		t.Fatal("expected error for partially invalid status list, got nil")
@@ -571,6 +594,7 @@ func TestInvalidStatusAmongValidStatusesReturnsError(t *testing.T) {
 
 // Scenario: Invalid since duration format returns error
 func TestInvalidSinceDurationFormatReturnsError(t *testing.T) {
+	t.Parallel()
 	_, err := ParseSinceFilter("not-a-duration", func() time.Time { return time.Now() })
 	if err == nil {
 		t.Fatal("expected error for invalid duration, got nil")
@@ -585,6 +609,7 @@ func TestInvalidSinceDurationFormatReturnsError(t *testing.T) {
 // =============================================================================
 
 func TestParseDurationHours(t *testing.T) {
+	t.Parallel()
 	d, err := ParseDuration("2h")
 	if err != nil {
 		t.Fatalf("ParseDuration(2h): %v", err)
@@ -595,6 +620,7 @@ func TestParseDurationHours(t *testing.T) {
 }
 
 func TestParseDurationMinutes(t *testing.T) {
+	t.Parallel()
 	d, err := ParseDuration("30m")
 	if err != nil {
 		t.Fatalf("ParseDuration(30m): %v", err)
@@ -605,6 +631,7 @@ func TestParseDurationMinutes(t *testing.T) {
 }
 
 func TestParseDurationDays(t *testing.T) {
+	t.Parallel()
 	d, err := ParseDuration("7d")
 	if err != nil {
 		t.Fatalf("ParseDuration(7d): %v", err)
@@ -616,6 +643,7 @@ func TestParseDurationDays(t *testing.T) {
 }
 
 func TestParseDurationInvalid(t *testing.T) {
+	t.Parallel()
 	_, err := ParseDuration("not-a-duration")
 	if err == nil {
 		t.Error("expected error for invalid duration, got nil")

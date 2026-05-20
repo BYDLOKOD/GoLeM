@@ -47,7 +47,7 @@ func StatusCmd(jobID, subagentsRoot, currentProjectID string, stdout io.Writer) 
 					err := process.Signal(syscall.Signal(0))
 					if err != nil {
 						// PID is dead, update status to failed
-						job.AtomicWrite(jobDir+"/status", []byte(job.StatusFailed))
+						_ = job.AtomicWrite(jobDir+"/status", []byte(job.StatusFailed))
 						status = job.StatusFailed
 					}
 				}
@@ -56,7 +56,7 @@ func StatusCmd(jobID, subagentsRoot, currentProjectID string, stdout io.Writer) 
 	}
 
 	// Print status to stdout
-	fmt.Fprintln(stdout, status)
+	_, _ = fmt.Fprintln(stdout, status)
 
 	return &StatusResult{
 		Status:   string(status),

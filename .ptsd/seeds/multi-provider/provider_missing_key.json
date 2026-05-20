@@ -1,7 +1,0 @@
-{
-  "description": "Provider section exists but api_key_file missing",
-  "provider": "custom",
-  "api_key_file": "~/.config/GoLeM/nonexistent_key",
-  "expected_error": "err:config \"Cannot read API key file for provider 'custom': file not found\"",
-  "expected_exit_code": 1
-}

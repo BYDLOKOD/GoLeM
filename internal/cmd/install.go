@@ -15,12 +15,9 @@ import (
 
 // InstallOptions configures the install command.
 type InstallOptions struct {
-	// CloneDir is the directory where GoLeM source lives (used as binary source
-	// for symlink creation and for re-reading the CLAUDE.md template on update).
-	// Empty for go-install mode.
+	// CloneDir is the directory where GoLeM source lives (used for re-reading the
+	// CLAUDE.md template on update). Empty for go-install mode.
 	CloneDir string
-	// BinDir is the directory where the "glm" symlink is placed (default: ~/.local/bin).
-	BinDir string
 	// ConfigDir is the GoLeM config directory (default: ~/.config/GoLeM).
 	ConfigDir string
 	// ClaudeMDPath is the target CLAUDE.md file (default: ~/.claude/CLAUDE.md).
@@ -49,7 +46,7 @@ func newPrompter(in io.Reader, out io.Writer) *prompter {
 }
 
 func (p *prompter) prompt(message string) (string, error) {
-	fmt.Fprint(p.out, message)
+	_, _ = fmt.Fprint(p.out, message)
 	if p.scanner.Scan() {
 		return strings.TrimSpace(p.scanner.Text()), nil
 	}
@@ -98,7 +95,7 @@ glm kill   <JOB_ID>                   # stop a running job
 - **Always set -d (directory)**: agents work in that directory. Use absolute paths.
 - **Flags before prompt**: ` + "`glm start -d /path -t 300 \"your prompt\"`" + ` — prompt is positional, must come last.
 - **Check results**: after ` + "`glm start`" + `, poll with ` + "`glm list`" + ` or ` + "`glm status <ID>`" + `, then read with ` + "`glm result <ID>`" + `.
-- **Rate limiting**: ` + "`api_rps`" + ` (default 3) controls max concurrent API calls. Extra agents queue automatically — no 429 errors.
+- **Rate limiting**: per-model concurrency limits are configured via the `+"`[models]`"+` section in glm.toml. No global limit is enforced.
 - **No mocks, no stubs**: GLM agents write real code in real directories.
 
 ### Multi-agent pattern
@@ -121,13 +118,13 @@ const glmSectionStart = "<!-- GLM-SUBAGENT-START -->"
 const glmSectionEnd = "<!-- GLM-SUBAGENT-END -->"
 
 // InstallCmd runs the interactive glm _install flow:
-//  1. Migrates legacy API key from ~/.config/zai/env if present.
-//  2. Prompts for Z.AI API key (saves to ConfigDir/zai_api_key, mode 0600).
-//  3. Prompts for permission mode (saves to ConfigDir/glm.toml).
-//  4. Writes ConfigDir/config.json with metadata.
-//  5. Creates a symlink at BinDir/glm (only for clone-based installs).
-//  6. Injects the GLM subagent section into ClaudeMDPath (idempotent).
-//  7. Creates SubagentsDir.
+//  1. Prompts for Z.AI API key (saves to ConfigDir/zai_api_key, mode 0600).
+//  2. Prompts for permission mode (saves to ConfigDir/glm.toml).
+//  3. Writes ConfigDir/config.json with metadata.
+//  4. Prints binary path info.
+//  5. Injects the GLM subagent section into ClaudeMDPath (idempotent).
+//  6. Creates SubagentsDir.
+//  7. Registers the MCP server in ~/.claude/settings.json.
 func InstallCmd(opts InstallOptions) error {
 	in := opts.In
 	if in == nil {
@@ -146,18 +143,11 @@ func InstallCmd(opts InstallOptions) error {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
-	// Step 1: API key — check existing, try legacy migration, then prompt.
+	// Step 1: API key — check existing, then prompt.
 	apiKeyPath := filepath.Join(opts.ConfigDir, "zai_api_key")
 	apiKeyExists := false
 	if _, err := os.Stat(apiKeyPath); err == nil {
 		apiKeyExists = true
-	}
-
-	// Try legacy migration from ~/.config/zai/env if no key exists yet.
-	if !apiKeyExists {
-		if migrated := migrateLegacyAPIKey(apiKeyPath, out); migrated {
-			apiKeyExists = true
-		}
 	}
 
 	writeKey := true
@@ -229,15 +219,8 @@ func InstallCmd(opts InstallOptions) error {
 		return fmt.Errorf("write config.json: %w", err)
 	}
 
-	// Step 4: Symlink — only for source/clone-based installs.
-	// For go-install, the binary is already in $GOPATH/bin which is in PATH.
-	if installMode == "source" {
-		if err := createSymlink(opts.CloneDir, opts.BinDir, p); err != nil {
-			return err
-		}
-	} else {
-		fmt.Fprintf(out, "Binary: %s (via go install)\n", glmExecutablePath())
-	}
+	// Step 4: Print binary path info.
+	_, _ = fmt.Fprintf(out, "Binary: %s\n", glmExecutablePath())
 
 	// Step 5: Inject GLM section into CLAUDE.md.
 	template := loadGLMTemplate(opts.CloneDir)
@@ -250,85 +233,17 @@ func InstallCmd(opts InstallOptions) error {
 		return fmt.Errorf("create subagents dir: %w", err)
 	}
 
-	fmt.Fprintln(out, "GoLeM installed successfully.")
-	return nil
-}
-
-// migrateLegacyAPIKey copies the API key from ~/.config/zai/env to the new
-// location if it exists. Returns true if migration succeeded.
-func migrateLegacyAPIKey(destPath string, out io.Writer) bool {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return false
-	}
-	legacyPath := filepath.Join(home, ".config", "zai", "env")
-	data, err := os.ReadFile(legacyPath)
-	if err != nil {
-		return false
-	}
-	key := strings.TrimSpace(string(data))
-	// Handle ZAI_API_KEY="value" format.
-	if strings.HasPrefix(key, `ZAI_API_KEY="`) && strings.HasSuffix(key, `"`) {
-		key = strings.TrimPrefix(key, `ZAI_API_KEY="`)
-		key = strings.TrimSuffix(key, `"`)
-	}
-	if key == "" {
-		return false
-	}
-	if err := os.WriteFile(destPath, []byte(key), 0o600); err != nil {
-		return false
-	}
-	fmt.Fprintf(out, "Migrated API key from %s\n", legacyPath)
-	return true
-}
-
-// createSymlink creates a symlink at BinDir/glm pointing to the binary
-// in CloneDir. Handles existing files/symlinks with prompts.
-func createSymlink(cloneDir, binDir string, p *prompter) error {
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		return fmt.Errorf("create bin dir: %w", err)
-	}
-
-	glmBinary := filepath.Join(cloneDir, "glm")
-	symlinkPath := filepath.Join(binDir, "glm")
-
-	fi, statErr := os.Lstat(symlinkPath)
-	if statErr == nil {
-		if fi.Mode()&os.ModeSymlink == 0 {
-			replace, err := p.promptYN(fmt.Sprintf("A regular file exists at %s. Replace with symlink? [y/N]: ", symlinkPath))
-			if err != nil {
-				return fmt.Errorf("read replace prompt: %w", err)
-			}
-			if replace {
-				if err := os.Remove(symlinkPath); err != nil {
-					return fmt.Errorf("remove existing binary: %w", err)
-				}
-			}
-		} else {
-			if err := os.Remove(symlinkPath); err != nil {
-				return fmt.Errorf("remove existing symlink: %w", err)
-			}
+	// Step 7: Register MCP server in ~/.claude/settings.json.
+	home, homeErr := os.UserHomeDir()
+	if homeErr == nil {
+		settingsPath := filepath.Join(home, ".claude", "settings.json")
+		glmBin := glmExecutablePath()
+		if err := RegisterMCPServerAtPath(settingsPath, glmBin); err != nil {
+			return fmt.Errorf("register MCP server: %w", err)
 		}
 	}
 
-	if _, err := os.Lstat(symlinkPath); os.IsNotExist(err) {
-		if err := os.Symlink(glmBinary, symlinkPath); err != nil {
-			return fmt.Errorf("create symlink: %w", err)
-		}
-	}
-
-	// Warn if BinDir is not in PATH.
-	pathEnv := os.Getenv("PATH")
-	inPath := false
-	for _, p := range strings.Split(pathEnv, ":") {
-		if p == binDir {
-			inPath = true
-			break
-		}
-	}
-	if !inPath {
-		fmt.Fprintf(p.out, "Warning: %s is not in PATH. Add it to your shell profile.\n", binDir)
-	}
+	_, _ = fmt.Fprintln(out, "GoLeM installed successfully.")
 	return nil
 }
 
@@ -373,8 +288,6 @@ func loadGLMTemplate(cloneDir string) string {
 
 // UninstallOptions configures the uninstall command.
 type UninstallOptions struct {
-	// BinDir is the directory containing the "glm" symlink.
-	BinDir string
 	// ConfigDir is the GoLeM config directory.
 	ConfigDir string
 	// ClaudeMDPath is the CLAUDE.md file containing the GLM section.
@@ -388,8 +301,8 @@ type UninstallOptions struct {
 }
 
 // UninstallCmd runs the interactive glm _uninstall flow:
-//  1. Removes the symlink at BinDir/glm (source installs only).
-//  2. Removes the GLM section from ClaudeMDPath (leaves other content).
+//  1. Removes the GLM section from ClaudeMDPath (leaves other content).
+//  2. Deregisters the MCP server from ~/.claude/settings.json.
 //  3. Prompts before removing ConfigDir/zai_api_key.
 //  4. Prompts before removing SubagentsDir.
 //  5. Removes ConfigDir.
@@ -406,20 +319,18 @@ func UninstallCmd(opts UninstallOptions) error {
 	// Create a shared prompter to avoid losing buffered input.
 	p := newPrompter(in, out)
 
-	// Step 1: Remove the symlink at BinDir/glm (only for source installs).
-	installMode := readInstallMode(opts.ConfigDir)
-	symlinkPath := filepath.Join(opts.BinDir, "glm")
-	if installMode == "source" {
-		if err := os.Remove(symlinkPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove symlink: %w", err)
-		}
-	} else {
-		fmt.Fprintf(out, "Installed via go install — remove binary manually if needed: %s\n", glmExecutablePath())
-	}
-
-	// Step 2: Remove GLM section from CLAUDE.md.
+	// Step 1: Remove GLM section from CLAUDE.md.
 	if err := RemoveClaudeMDSection(opts.ClaudeMDPath); err != nil {
 		return fmt.Errorf("remove CLAUDE.md section: %w", err)
+	}
+
+	// Step 2: Deregister MCP server from ~/.claude/settings.json.
+	home, homeErr := os.UserHomeDir()
+	if homeErr == nil {
+		settingsPath := filepath.Join(home, ".claude", "settings.json")
+		if err := DeregisterMCPServerAtPath(settingsPath); err != nil {
+			return fmt.Errorf("deregister MCP server: %w", err)
+		}
 	}
 
 	// Step 3: Prompt before removing API key.
@@ -450,7 +361,7 @@ func UninstallCmd(opts UninstallOptions) error {
 		return fmt.Errorf("remove config dir: %w", err)
 	}
 
-	fmt.Fprintln(out, "GoLeM uninstalled.")
+	_, _ = fmt.Fprintln(out, "GoLeM uninstalled.")
 	return nil
 }
 
@@ -496,11 +407,11 @@ func UpdateCmd(opts UpdateOptions) error {
 		return updateGoInstall(opts.ClaudeMDPath, out, errOut)
 	}
 
-	return updateSource(opts.CloneDir, opts.ClaudeMDPath, out, errOut)
+	return updateSource(opts.CloneDir, opts.ClaudeMDPath, out)
 }
 
 // updateSource handles update for clone-based installs via git pull.
-func updateSource(cloneDir, claudeMDPath string, out, errOut io.Writer) error {
+func updateSource(cloneDir, claudeMDPath string, out io.Writer) error {
 	// Validate CloneDir is a git repository.
 	gitDir := filepath.Join(cloneDir, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
@@ -531,7 +442,7 @@ func updateSource(cloneDir, claudeMDPath string, out, errOut io.Writer) error {
 		return fmt.Errorf("get new HEAD: %w", err)
 	}
 
-	fmt.Fprintf(out, "Updated: %s → %s\n", oldRev, newRev)
+	_, _ = fmt.Fprintf(out, "Updated: %s → %s\n", oldRev, newRev)
 
 	// Show commit log between old and new revisions if they differ.
 	if oldRev != newRev {
@@ -539,7 +450,7 @@ func updateSource(cloneDir, claudeMDPath string, out, errOut io.Writer) error {
 		logCmd.Dir = cloneDir
 		logOutput, _ := logCmd.Output()
 		if len(logOutput) > 0 {
-			fmt.Fprintf(out, "%s\n", strings.TrimSpace(string(logOutput)))
+			_, _ = fmt.Fprintf(out, "%s\n", strings.TrimSpace(string(logOutput)))
 		}
 	}
 
@@ -549,13 +460,13 @@ func updateSource(cloneDir, claudeMDPath string, out, errOut io.Writer) error {
 		return fmt.Errorf("inject CLAUDE.md: %w", err)
 	}
 
-	fmt.Fprintln(out, "Update complete.")
+	_, _ = fmt.Fprintln(out, "Update complete.")
 	return nil
 }
 
 // updateGoInstall handles update for go-install-based installs.
 func updateGoInstall(claudeMDPath string, out, errOut io.Writer) error {
-	fmt.Fprintln(out, "Updating via go install...")
+	_, _ = fmt.Fprintln(out, "Updating via go install...")
 	goCmd := exec.Command("go", "install", "github.com/veschin/GoLeM/cmd/glm@latest")
 	goCmd.Stdout = out
 	goCmd.Stderr = errOut
@@ -568,7 +479,7 @@ func updateGoInstall(claudeMDPath string, out, errOut io.Writer) error {
 		return fmt.Errorf("inject CLAUDE.md: %w", err)
 	}
 
-	fmt.Fprintln(out, "Update complete.")
+	_, _ = fmt.Fprintln(out, "Update complete.")
 	return nil
 }
 
@@ -651,6 +562,105 @@ func InjectClaudeMD(claudeMDPath, template string) error {
 	}
 	newContent := content + templateContent + "\n"
 	return os.WriteFile(claudeMDPath, []byte(newContent), 0o644)
+}
+
+// RegisterMCPServerAtPath reads the JSON file at path, adds or updates the
+// "golem" entry under "mcpServers", and writes it back atomically.
+// If the file does not exist, it is created with the minimal structure.
+func RegisterMCPServerAtPath(path string, glmBinPath string) error {
+	// Read existing settings or start with empty object.
+	var settings map[string]any
+	data, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read settings: %w", err)
+	}
+	if len(data) > 0 {
+		if jsonErr := json.Unmarshal(data, &settings); jsonErr != nil {
+			// File exists but is malformed -- start fresh.
+			settings = make(map[string]any)
+		}
+	} else {
+		settings = make(map[string]any)
+	}
+
+	// Get or create mcpServers map.
+	mcpServers, ok := settings["mcpServers"].(map[string]any)
+	if !ok {
+		mcpServers = make(map[string]any)
+	}
+
+	// Set golem entry.
+	mcpServers["golem"] = map[string]any{
+		"command": glmBinPath,
+		"args":    []string{"mcp"},
+	}
+	settings["mcpServers"] = mcpServers
+
+	// Write atomically.
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal settings: %w", err)
+	}
+
+	// Ensure parent directory exists.
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create settings dir: %w", err)
+	}
+
+	// Atomic write via tmp+rename.
+	tmp := path + ".tmp." + fmt.Sprintf("%d", os.Getpid())
+	if err := os.WriteFile(tmp, append(out, '\n'), 0o644); err != nil {
+		return fmt.Errorf("write settings tmp: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rename settings: %w", err)
+	}
+	return nil
+}
+
+// DeregisterMCPServerAtPath removes the "golem" entry from mcpServers in
+// the JSON file at path. No-ops if the file or entry does not exist.
+func DeregisterMCPServerAtPath(path string) error {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read settings: %w", err)
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil // malformed file, nothing to remove
+	}
+
+	mcpServers, ok := settings["mcpServers"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	delete(mcpServers, "golem")
+
+	// If mcpServers is now empty, remove it entirely.
+	if len(mcpServers) == 0 {
+		delete(settings, "mcpServers")
+	}
+
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal settings: %w", err)
+	}
+
+	tmp := path + ".tmp." + fmt.Sprintf("%d", os.Getpid())
+	if err := os.WriteFile(tmp, append(out, '\n'), 0o644); err != nil {
+		return fmt.Errorf("write settings tmp: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rename settings: %w", err)
+	}
+	return nil
 }
 
 // RemoveClaudeMDSection removes the GLM subagent section (including the marker

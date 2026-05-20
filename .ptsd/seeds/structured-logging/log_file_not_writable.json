@@ -1,9 +1,0 @@
-{
-  "description": "GLM_LOG_FILE path not writable — warn and continue",
-  "env": {"GLM_LOG_FILE": "/root/readonly/glm.log"},
-  "messages": [
-    {"level": "info", "text": "Starting job"}
-  ],
-  "expected_stderr_contains": "Cannot write to log file",
-  "expected_continues": true
-}

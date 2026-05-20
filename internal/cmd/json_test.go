@@ -66,6 +66,7 @@ func isValidJSON(data string) bool {
 
 // Scenario: --json flag is accepted by list command
 func TestJsonFlagAcceptedByListCommand(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	var buf bytes.Buffer
 	err := ListJSON(root, &FilterOptions{}, &buf)
@@ -80,6 +81,7 @@ func TestJsonFlagAcceptedByListCommand(t *testing.T) {
 
 // Scenario: --json flag is accepted by status command
 func TestJsonFlagAcceptedByStatusCommand(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-142800-e5f6a7b8"
 	dir := makeJobDir(t, root, "proj", jobID, "running")
@@ -98,6 +100,7 @@ func TestJsonFlagAcceptedByStatusCommand(t *testing.T) {
 
 // Scenario: --json flag is accepted by result command
 func TestJsonFlagAcceptedByResultCommand(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-143205-a8f3b1c2"
 	dir := makeJobDir(t, root, "proj", jobID, "done")
@@ -119,6 +122,7 @@ func TestJsonFlagAcceptedByResultCommand(t *testing.T) {
 
 // Scenario: --json flag is accepted by log command
 func TestJsonFlagAcceptedByLogCommand(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-143205-a8f3b1c2"
 	dir := makeJobDir(t, root, "proj", jobID, "done")
@@ -140,6 +144,7 @@ func TestJsonFlagAcceptedByLogCommand(t *testing.T) {
 
 // Scenario: list --json outputs array of job objects
 func TestListJsonOutputsArrayOfJobObjects(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	type jobSpec struct {
@@ -208,6 +213,7 @@ func TestListJsonOutputsArrayOfJobObjects(t *testing.T) {
 
 // Scenario: status --json outputs job status object
 func TestStatusJsonOutputsJobStatusObject(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-142800-e5f6a7b8"
 	dir := makeJobDir(t, root, "proj", jobID, "running")
@@ -242,6 +248,7 @@ func TestStatusJsonOutputsJobStatusObject(t *testing.T) {
 
 // Scenario: result --json for a completed job
 func TestResultJsonForCompletedJob(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-143205-a8f3b1c2"
 	dir := makeJobDir(t, root, "proj", jobID, "done")
@@ -292,6 +299,7 @@ func TestResultJsonForCompletedJob(t *testing.T) {
 
 // Scenario: log --json outputs changelog as structured array
 func TestLogJsonOutputsChangelogAsStructuredArray(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-143205-a8f3b1c2"
 	dir := makeJobDir(t, root, "proj", jobID, "done")
@@ -332,6 +340,7 @@ func TestLogJsonOutputsChangelogAsStructuredArray(t *testing.T) {
 
 // Scenario: Errors go to stderr in text format even with --json
 func TestErrorsGoToStderrInTextFormatEvenWithJson(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	// job-nonexistent does not exist.
 	var stdout bytes.Buffer
@@ -362,6 +371,7 @@ func TestErrorsGoToStderrInTextFormatEvenWithJson(t *testing.T) {
 
 // Scenario: JSON output goes to stdout only
 func TestJsonOutputGoesToStdoutOnly(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	makeJobDir(t, root, "proj", "job-20260227-143205-a8f3b1c2", "done")
 
@@ -392,6 +402,7 @@ func TestJsonOutputGoesToStdoutOnly(t *testing.T) {
 
 // Scenario: list --json with no jobs outputs empty array
 func TestListJsonWithNoJobsOutputsEmptyArray(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	var buf bytes.Buffer
 	if err := ListJSON(root, &FilterOptions{}, &buf); err != nil {
@@ -416,6 +427,7 @@ func TestListJsonWithNoJobsOutputsEmptyArray(t *testing.T) {
 
 // Scenario: result --json on a failed job includes stderr and exit_code
 func TestResultJsonOnFailedJobIncludesStderrAndExitCode(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-141500-c3d4e5f6"
 	dir := makeJobDir(t, root, "proj", jobID, "failed")
@@ -462,6 +474,7 @@ func TestResultJsonOnFailedJobIncludesStderrAndExitCode(t *testing.T) {
 
 // Scenario: status --json on stale job reconciles before output
 func TestStatusJsonOnStaleJobReconcilesBeforeOutput(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-080000-dead1234"
 	dir := makeJobDir(t, root, "proj", jobID, "running")
@@ -486,6 +499,7 @@ func TestStatusJsonOnStaleJobReconcilesBeforeOutput(t *testing.T) {
 
 // Scenario: Special characters in stdout are properly escaped in JSON
 func TestSpecialCharactersInStdoutAreProperlyEscapedInJson(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-143000-special0"
 	dir := makeJobDir(t, root, "proj", jobID, "done")
@@ -517,6 +531,7 @@ func TestSpecialCharactersInStdoutAreProperlyEscapedInJson(t *testing.T) {
 
 // Scenario: result --json on a timed out job
 func TestResultJsonOnTimedOutJob(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-120000-timeout0"
 	dir := makeJobDir(t, root, "proj", jobID, "timeout")
@@ -544,6 +559,7 @@ func TestResultJsonOnTimedOutJob(t *testing.T) {
 
 // Scenario: result --json on a permission_error job
 func TestResultJsonOnPermissionErrorJob(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-130000-permerr0"
 	dir := makeJobDir(t, root, "proj", jobID, "permission_error")
@@ -570,6 +586,7 @@ func TestResultJsonOnPermissionErrorJob(t *testing.T) {
 
 // Verify JSONOutput encodes non-null empty arrays correctly.
 func TestFormatJsonProducesValidJson(t *testing.T) {
+	t.Parallel()
 	var arr []JobListItem // nil slice
 	data, err := FormatJSON(arr)
 	if err != nil {

@@ -129,13 +129,13 @@ func ListCmd(subagentsRoot string, w io.Writer, opts ...*FilterOptions) error {
 	})
 
 	// Print tabular output.
-	fmt.Fprintf(w, "%-44s  %-18s  %s\n", "JOB_ID", "STATUS", "STARTED")
+	_, _ = fmt.Fprintf(w, "%-44s  %-18s  %s\n", "JOB_ID", "STATUS", "STARTED")
 	for _, j := range jobs {
 		started := "-"
 		if j.StartedAt != nil {
 			started = j.StartedAt.Format(time.RFC3339)
 		}
-		fmt.Fprintf(w, "%-44s  %-18s  %s\n", j.JobID, j.Status, started)
+		_, _ = fmt.Fprintf(w, "%-44s  %-18s  %s\n", j.JobID, j.Status, started)
 	}
 	return nil
 }

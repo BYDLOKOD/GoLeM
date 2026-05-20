@@ -1,8 +1,0 @@
-{
-  "description": "glm update happy path",
-  "clone_dir": "~/.local/share/GoLeM",
-  "old_revision": "abc1234",
-  "new_revision": "def5678",
-  "expected_output_contains": ["abc1234", "def5678"],
-  "expected_actions": ["git pull --ff-only", "re-inject CLAUDE.md"]
-}

@@ -1,5 +1,0 @@
-{
-  "filter": "--status running --project my-app",
-  "input": "jobs_dataset.json",
-  "expected_count": 1
-}

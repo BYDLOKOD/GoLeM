@@ -1,5 +1,0 @@
-{
-  "key": "max_parallel",
-  "value": "5",
-  "expected_toml": "max_parallel = 5\n"
-}

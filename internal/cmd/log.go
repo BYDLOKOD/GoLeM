@@ -23,7 +23,7 @@ func LogCmd(subagentsRoot, currentProjectID, jobID string, w io.Writer) error {
 	data, err := os.ReadFile(filepath.Join(jobDir, "changelog.txt"))
 	if err != nil {
 		// changelog.txt does not exist: print fallback message.
-		fmt.Fprint(w, "(no changelog)")
+		_, _ = fmt.Fprint(w, "(no changelog)")
 		return nil
 	}
 

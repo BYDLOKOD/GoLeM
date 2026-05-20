@@ -96,6 +96,7 @@ func noopSleep() {}
 // ---------- AC1: glm list — tabular output ----------
 
 func TestListShowsAllJobsInTabularFormatSortedByStartTime(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	// Seed: list_output.json scenario — 5 jobs
@@ -150,6 +151,7 @@ func TestListShowsAllJobsInTabularFormatSortedByStartTime(t *testing.T) {
 // ---------- AC2: List scans both project-scoped and legacy dirs ----------
 
 func TestListFindsJobsInProjectScopedDirectories(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "my-app-1234567890"
 	jobID := "job-20260227-101500-e5f6a7b8"
@@ -167,6 +169,7 @@ func TestListFindsJobsInProjectScopedDirectories(t *testing.T) {
 }
 
 func TestListFindsJobsInLegacyFlatDirectories(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-100000-a1b2c3d4"
 
@@ -184,6 +187,7 @@ func TestListFindsJobsInLegacyFlatDirectories(t *testing.T) {
 }
 
 func TestListMergesJobsFromAllDirectoryTypes(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	projectID := "my-app-1234567890"
@@ -217,6 +221,7 @@ func TestListMergesJobsFromAllDirectoryTypes(t *testing.T) {
 // ---------- AC3: List checks PID liveness for running jobs ----------
 
 func TestListUpdatesStaleRunningJobsToFailed(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-101500-e5f6a7b8"
 
@@ -244,6 +249,7 @@ func TestListUpdatesStaleRunningJobsToFailed(t *testing.T) {
 // ---------- AC4: Empty list ----------
 
 func TestEmptyJobListPrintsNothing(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	var buf bytes.Buffer
@@ -259,6 +265,7 @@ func TestEmptyJobListPrintsNothing(t *testing.T) {
 // ---------- AC5: glm log — print changelog ----------
 
 func TestLogPrintsChangelogContents(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-101500-e5f6a7b8"
 
@@ -288,6 +295,7 @@ func TestLogPrintsChangelogContents(t *testing.T) {
 }
 
 func TestLogPrintsFallbackWhenChangelogDoesNotExist(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-101500-e5f6a7b8"
 
@@ -307,6 +315,7 @@ func TestLogPrintsFallbackWhenChangelogDoesNotExist(t *testing.T) {
 // ---------- AC6: Log job not found ----------
 
 func TestLogOnNonExistentJobReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	var buf bytes.Buffer
@@ -322,6 +331,7 @@ func TestLogOnNonExistentJobReturnsNotFound(t *testing.T) {
 // ---------- AC7: glm clean — remove terminal jobs ----------
 
 func TestCleanWithoutFlagsRemovesTerminalStatusJobs(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	now := time.Now()
 
@@ -368,6 +378,7 @@ func TestCleanWithoutFlagsRemovesTerminalStatusJobs(t *testing.T) {
 }
 
 func TestCleanAlsoRemovesPermissionErrorJobs(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	now := time.Now()
 
@@ -390,6 +401,7 @@ func TestCleanAlsoRemovesPermissionErrorJobs(t *testing.T) {
 // ---------- AC8: glm clean --days N ----------
 
 func TestCleanWithDaysRemovesOldJobsRegardlessOfStatus(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	// Reference date: 2026-02-27T12:00:00+03:00
@@ -464,6 +476,7 @@ func TestCleanWithDaysRemovesOldJobsRegardlessOfStatus(t *testing.T) {
 // ---------- AC9: Clean prints count ----------
 
 func TestCleanPrintsCountOfRemovedJobs(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	now := time.Now()
 
@@ -484,6 +497,7 @@ func TestCleanPrintsCountOfRemovedJobs(t *testing.T) {
 // ---------- AC10: Clean --days validation ----------
 
 func TestCleanWithInvalidDaysValueReturnsError(t *testing.T) {
+	t.Parallel()
 	// days = -2 is used as sentinel for "invalid days string" scenario.
 	// The caller layer (CLI parsing) validates and passes -2 to indicate invalid.
 	// Here we test that CleanCmd rejects a non-negative but programmatically
@@ -505,6 +519,7 @@ func TestCleanWithInvalidDaysValueReturnsError(t *testing.T) {
 }
 
 func TestCleanWithNegativeDaysValueReturnsError(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	now := time.Now()
 
@@ -522,6 +537,7 @@ func TestCleanWithNegativeDaysValueReturnsError(t *testing.T) {
 // ---------- AC11: glm kill — terminate running job ----------
 
 func TestKillSendsSIGTERMThenSIGKILLToProcessGroup(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-101500-e5f6a7b8"
 
@@ -565,6 +581,7 @@ func TestKillSendsSIGTERMThenSIGKILLToProcessGroup(t *testing.T) {
 }
 
 func TestKillSendsSIGKILLWhenProcessStillAliveAfterSIGTERM(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-101500-e5f6a7b8"
 
@@ -606,6 +623,7 @@ func TestKillSendsSIGKILLWhenProcessStillAliveAfterSIGTERM(t *testing.T) {
 // ---------- AC12: Kill updates status to killed ----------
 
 func TestKillUpdatesJobStatusToKilled(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-101500-e5f6a7b8"
 
@@ -624,6 +642,7 @@ func TestKillUpdatesJobStatusToKilled(t *testing.T) {
 // ---------- AC13: Kill error cases ----------
 
 func TestKillOnNonExistentJobReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	err := cmd.KillCmd(root, "", "job-20260227-999999-deadbeef", noopSignal, noopSleep)
@@ -636,6 +655,7 @@ func TestKillOnNonExistentJobReturnsNotFound(t *testing.T) {
 }
 
 func TestKillOnNonRunningJobReturnsError(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-100000-a1b2c3d4"
 
@@ -655,6 +675,7 @@ func TestKillOnNonRunningJobReturnsError(t *testing.T) {
 }
 
 func TestKillRejectsNonRunningStatusDone(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-100000-done0001"
 	makeJob(t, root, jobID, "done")
@@ -669,6 +690,7 @@ func TestKillRejectsNonRunningStatusDone(t *testing.T) {
 }
 
 func TestKillRejectsNonRunningStatusFailed(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-100000-fail0001"
 	makeJob(t, root, jobID, "failed")
@@ -683,6 +705,7 @@ func TestKillRejectsNonRunningStatusFailed(t *testing.T) {
 }
 
 func TestKillRejectsNonRunningStatusTimeout(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-100000-time0001"
 	makeJob(t, root, jobID, "timeout")
@@ -697,6 +720,7 @@ func TestKillRejectsNonRunningStatusTimeout(t *testing.T) {
 }
 
 func TestKillRejectsNonRunningStatusKilled(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-100000-kill0001"
 	makeJob(t, root, jobID, "killed")
@@ -711,6 +735,7 @@ func TestKillRejectsNonRunningStatusKilled(t *testing.T) {
 }
 
 func TestKillRejectsNonRunningStatusQueued(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-100000-queu0001"
 	makeJob(t, root, jobID, "queued")
@@ -727,6 +752,7 @@ func TestKillRejectsNonRunningStatusQueued(t *testing.T) {
 // ---------- AC14: Kill exit code ----------
 
 func TestKillReturnsExitCode0OnSuccess(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-101500-valid001"
 
@@ -742,6 +768,7 @@ func TestKillReturnsExitCode0OnSuccess(t *testing.T) {
 // ---------- Edge Cases ----------
 
 func TestKillOnJobWhoseProcessAlreadyDied(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-101500-dead0001"
 
@@ -759,6 +786,7 @@ func TestKillOnJobWhoseProcessAlreadyDied(t *testing.T) {
 }
 
 func TestCleanWithNoJobsToClean(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	now := time.Now()
 
@@ -777,6 +805,7 @@ func TestCleanWithNoJobsToClean(t *testing.T) {
 }
 
 func TestListWithCorruptedJobDirsShowsUnknownStatus(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	jobID := "job-20260227-101500-corrupt1"
 
@@ -801,6 +830,7 @@ func TestListWithCorruptedJobDirsShowsUnknownStatus(t *testing.T) {
 }
 
 func TestCleanDays0RemovesAllJobsRegardlessOfAge(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	now := time.Now()
 

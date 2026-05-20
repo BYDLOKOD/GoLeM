@@ -10,10 +10,12 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/veschin/GoLeM/internal/event"
 )
 
-// seedDir returns the absolute path to a seed sub-directory for this feature.
-const featureSeedBase = "../../.ptsd/seeds/job-lifecycle"
+// featureSeedBase is the path to the job package test fixtures.
+const featureSeedBase = "testdata"
 
 func seedPath(parts ...string) string {
 	return filepath.Join(append([]string{featureSeedBase}, parts...)...)
@@ -735,4 +737,92 @@ func TestConcurrentStatusTransitionOnlyOneWins(t *testing.T) {
 		t.Errorf("expected %d failures, got %d", goroutines-1, failures)
 	}
 	assertFileContains(t, filepath.Join(dir, "status"), "running")
+}
+
+// ---------------------------------------------------------------------------
+// Event producer tests (P2.1)
+// ---------------------------------------------------------------------------
+
+// TestEmitQueued_PublishesEvent verifies that EmitQueued publishes a JobQueued
+// event with the correct JobID and Data payload.
+func TestEmitQueued_PublishesEvent(t *testing.T) {
+	bus := event.NewBus()
+	defer bus.Close()
+
+	ch := bus.Subscribe(event.JobQueued)
+
+	dir := t.TempDir()
+	j, err := NewJob(dir, "test-project", "job-test-001")
+	if err != nil {
+		t.Fatalf("NewJob: %v", err)
+	}
+
+	j.SetBus(bus)
+	j.EmitQueued()
+
+	select {
+	case e := <-ch:
+		if e.Type != event.JobQueued {
+			t.Errorf("type = %v, want %v", e.Type, event.JobQueued)
+		}
+		if e.JobID != "job-test-001" {
+			t.Errorf("job_id = %v, want job-test-001", e.JobID)
+		}
+		data, ok := e.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("Data is not map[string]any: %T", e.Data)
+		}
+		if data["project_id"] != "test-project" {
+			t.Errorf("project_id = %v, want test-project", data["project_id"])
+		}
+		if data["job_id"] != "job-test-001" {
+			t.Errorf("data job_id = %v, want job-test-001", data["job_id"])
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for JobQueued event")
+	}
+}
+
+// TestEmitQueued_NilBus_NoPanic verifies that EmitQueued does not panic when
+// Bus is nil (the default zero value).
+func TestEmitQueued_NilBus_NoPanic(t *testing.T) {
+	dir := t.TempDir()
+	j, err := NewJob(dir, "test-project", "job-test-002")
+	if err != nil {
+		t.Fatalf("NewJob: %v", err)
+	}
+
+	// Bus is nil (default). Must not panic.
+	j.EmitQueued()
+}
+
+// TestEmitQueued_NoBusSet_NoPanic verifies that EmitQueued does not panic when
+// SetBus was never called.
+func TestEmitQueued_NoBusSet_NoPanic(t *testing.T) {
+	dir := t.TempDir()
+	j, err := NewJob(dir, "test-project", "job-test-003")
+	if err != nil {
+		t.Fatalf("NewJob: %v", err)
+	}
+
+	// No SetBus called. Must not panic.
+	j.EmitQueued()
+}
+
+// TestSetBus_Job_ReturnsReceiverForChaining verifies that SetBus returns the
+// Job receiver for method chaining.
+func TestSetBus_Job_ReturnsReceiverForChaining(t *testing.T) {
+	dir := t.TempDir()
+	j, err := NewJob(dir, "test-project", "job-test-004")
+	if err != nil {
+		t.Fatalf("NewJob: %v", err)
+	}
+
+	bus := event.NewBus()
+	defer bus.Close()
+
+	got := j.SetBus(bus)
+	if got != j {
+		t.Error("SetBus did not return the receiver")
+	}
 }

@@ -1,5 +1,0 @@
-{
-  "description": "config set permission_mode with valid value",
-  "command": "config set permission_mode acceptEdits",
-  "expected_toml": "permission_mode = \"acceptEdits\"\n"
-}

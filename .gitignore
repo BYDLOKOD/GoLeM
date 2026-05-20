@@ -7,3 +7,10 @@
 # Binary output (match project name)
 /GoLeM
 /glm
+
+# Claude local settings
+.claude/settings.local.json
+
+# Fork-private workflow directories
+.ptsd/
+.claude/

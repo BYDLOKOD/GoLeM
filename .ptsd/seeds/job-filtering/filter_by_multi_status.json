@@ -1,5 +1,0 @@
-{
-  "filter": "--status done,failed",
-  "input": "jobs_dataset.json",
-  "expected_count": 3
-}

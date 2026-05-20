@@ -57,6 +57,7 @@ func deadPID() int { return 2<<22 - 1 } // 8388607
 // Scenario: Parse all flags for run command
 // seed: flags_happy_run.json
 func TestParseAllFlagsForRunCommand(t *testing.T) {
+	t.Parallel()
 	args := []string{
 		"run",
 		"-d", "/home/veschin/work/project",
@@ -87,6 +88,7 @@ func TestParseAllFlagsForRunCommand(t *testing.T) {
 // Scenario: Parse per-slot model override flags
 // seed: flags_per_slot.json
 func TestParsePerSlotModelOverrideFlags(t *testing.T) {
+	t.Parallel()
 	args := []string{
 		"run",
 		"--opus", "glm-5",
@@ -116,6 +118,7 @@ func TestParsePerSlotModelOverrideFlags(t *testing.T) {
 // Scenario: Parse --unsafe flag sets bypassPermissions
 // seed: flags_unsafe.json
 func TestParseUnsafeFlagSetsBypassPermissions(t *testing.T) {
+	t.Parallel()
 	args := []string{
 		"run",
 		"--unsafe",
@@ -136,6 +139,7 @@ func TestParseUnsafeFlagSetsBypassPermissions(t *testing.T) {
 
 // Scenario: Parse --mode flag sets explicit permission mode
 func TestParseModeFlagSetsExplicitPermissionMode(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "--mode", "plan", "Do something"}
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -149,6 +153,7 @@ func TestParseModeFlagSetsExplicitPermissionMode(t *testing.T) {
 
 // Scenario: Default working directory is current directory
 func TestDefaultWorkingDirectoryIsCurrentDirectory(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "Do something"}
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -162,8 +167,9 @@ func TestDefaultWorkingDirectoryIsCurrentDirectory(t *testing.T) {
 
 // Scenario: Default timeout comes from config
 func TestDefaultTimeoutComesFromConfig(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "Do something"}
-	configDefaultTimeout := 3000
+	configDefaultTimeout := 1800
 
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -185,6 +191,7 @@ func TestDefaultTimeoutComesFromConfig(t *testing.T) {
 
 // Scenario: Remaining arguments after flags are joined as prompt
 func TestRemainingArgumentsAfterFlagsJoinedAsPrompt(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "-d", "/tmp", "Fix", "the", "bug", "in", "main.go", "please"}
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -202,6 +209,7 @@ func TestRemainingArgumentsAfterFlagsJoinedAsPrompt(t *testing.T) {
 // Scenario: Non-existent directory returns error
 // seed: flags_bad_dir.json
 func TestNonExistentDirectoryReturnsError(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "-d", "/nonexistent/path", "Do something"}
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -224,6 +232,7 @@ func TestNonExistentDirectoryReturnsError(t *testing.T) {
 // Scenario: Non-numeric timeout returns error
 // seed: flags_bad_timeout.json
 func TestNonNumericTimeoutReturnsError(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "-t", "abc", "Do something"}
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -247,6 +256,7 @@ func TestNonNumericTimeoutReturnsError(t *testing.T) {
 
 // Scenario: Negative timeout returns error
 func TestNegativeTimeoutReturnsError(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "-t", "-5", "Do something"}
 	f, parseErr := cmd.ParseFlags(args[1:])
 	if parseErr != nil {
@@ -269,6 +279,7 @@ func TestNegativeTimeoutReturnsError(t *testing.T) {
 
 // Scenario: Zero timeout returns error
 func TestZeroTimeoutReturnsError(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "-t", "0", "Do something"}
 	f, parseErr := cmd.ParseFlags(args[1:])
 	if parseErr != nil {
@@ -294,6 +305,7 @@ func TestZeroTimeoutReturnsError(t *testing.T) {
 // Scenario: No prompt provided returns error
 // seed: flags_no_prompt.json
 func TestNoPromptProvidedReturnsError(t *testing.T) {
+	t.Parallel()
 	args := []string{"run", "-d", "/tmp"}
 	f, err := cmd.ParseFlags(args[1:])
 	if err != nil {
@@ -310,294 +322,17 @@ func TestNoPromptProvidedReturnsError(t *testing.T) {
 	}
 }
 
-// ─── AC5: glm run — synchronous execution ────────────────────────────────────
-
-// Scenario: Run command executes and prints result
-func TestRunCommandExecutesAndPrintsResult(t *testing.T) {
-	root := t.TempDir()
-	projectID := "test-project"
-	f := &cmd.Flags{
-		Dir:     t.TempDir(),
-		Timeout: 60,
-		Prompt:  "Analyze the code",
-	}
-
-	var stdoutBuf, stderrBuf bytes.Buffer
-	result, err := cmd.RunCmd(f, root, projectID, &stdoutBuf, &stderrBuf)
-	if err != nil {
-		t.Fatalf("RunCmd unexpected error: %v", err)
-	}
-
-	// A job must be created.
-	if result.JobID == "" {
-		t.Error("RunCmd: JobID should not be empty")
-	}
-
-	// The job directory must NOT exist after RunCmd (auto-deleted).
-	jobDir := filepath.Join(root, projectID, result.JobID)
-	if _, statErr := os.Stat(jobDir); !os.IsNotExist(statErr) {
-		t.Errorf("RunCmd: job directory %q should be auto-deleted, but still exists", jobDir)
-	}
-
-	// Exit code must be set (even if 0).
-	_ = result.ExitCode
-}
-
-// Scenario: Run command prints changelog to stderr on file changes
-func TestRunCommandPrintsChangelogToStderr(t *testing.T) {
-	root := t.TempDir()
-	projectID := "test-project"
-
-	// Pre-create a job directory with a changelog file to simulate claude producing changes.
-	jobID := "job-20260227-100000-a1b2c3d4"
-	dir := makeJobDir(t, root, projectID, jobID, "done")
-	writeJobFile(t, dir, "stdout.txt", "analysis output")
-	writeJobFile(t, dir, "changelog.txt", "Modified: src/main.go")
-
-	var stdoutBuf, stderrBuf bytes.Buffer
-	f := &cmd.Flags{Dir: t.TempDir(), Timeout: 60, Prompt: "p"}
-
-	result, err := cmd.RunCmd(f, root, projectID, &stdoutBuf, &stderrBuf)
-	if err != nil {
-		t.Fatalf("RunCmd unexpected error: %v", err)
-	}
-
-	// stdout.txt content must appear on stdout.
-	if !strings.Contains(stdoutBuf.String(), "analysis output") {
-		t.Errorf("stdout: expected %q to contain %q", stdoutBuf.String(), "analysis output")
-	}
-	_ = result
-}
-
-// ─── AC6: Run failure prints stderr ───────────────────────────────────────────
-
-// Scenario: Run command prints stderr on execution failure
-func TestRunCommandPrintsStderrOnExecutionFailure(t *testing.T) {
-	root := t.TempDir()
-	projectID := "test-project"
-
-	jobID := "job-20260227-100001-b2c3d4e5"
-	dir := makeJobDir(t, root, projectID, jobID, "failed")
-	writeJobFile(t, dir, "stderr.txt", "error: command not found")
-	writeJobFile(t, dir, "stdout.txt", "")
-
-	var stdoutBuf, stderrBuf bytes.Buffer
-	f := &cmd.Flags{Dir: t.TempDir(), Timeout: 60, Prompt: "p"}
-
-	result, err := cmd.RunCmd(f, root, projectID, &stdoutBuf, &stderrBuf)
-	if err != nil {
-		t.Fatalf("RunCmd unexpected error: %v", err)
-	}
-
-	// stderr.txt content must appear on the stderr writer.
-	if !strings.Contains(stderrBuf.String(), "error: command not found") {
-		t.Errorf("stderr: expected to contain %q, got %q", "error: command not found", stderrBuf.String())
-	}
-
-	// Job directory must be auto-deleted.
-	if result.JobID != "" {
-		jobDir := filepath.Join(root, projectID, result.JobID)
-		if _, statErr := os.Stat(jobDir); !os.IsNotExist(statErr) {
-			t.Errorf("RunCmd: job directory should be auto-deleted after failure")
-		}
-	}
-}
-
-// ─── AC7: glm start — async execution ────────────────────────────────────────
-
-// Scenario: Start command writes PID asynchronously inside goroutine
-// seed: start_output.json — "PID is written to pid.txt by the background goroutine after subprocess starts."
-func TestStartCommandWritesPIDAsyncInGoroutine(t *testing.T) {
-	root := t.TempDir()
-	projectID := "test-project"
-	f := &cmd.Flags{Dir: t.TempDir(), Timeout: 60, Prompt: "Analyze the code"}
-
-	var stdoutBuf bytes.Buffer
-	result, err := cmd.StartCmd(f, root, projectID, &stdoutBuf)
-	if err != nil {
-		t.Fatalf("StartCmd unexpected error: %v", err)
-	}
-
-	if result.JobID == "" {
-		t.Fatal("StartCmd: JobID should not be empty")
-	}
-
-	// PIDWritten must be false at return time — PID is written async by the goroutine.
-	if result.PIDWritten {
-		t.Error("StartCmd: PIDWritten should be false — PID is now written asynchronously inside the goroutine")
-	}
-
-	// The job ID must be the only content on stdout (single line, no decoration).
-	printed := strings.TrimSuffix(stdoutBuf.String(), "\n")
-	if printed != result.JobID {
-		t.Errorf("stdout: got %q, want %q", printed, result.JobID)
-	}
-
-	// Wait for the background goroutine to write pid.txt.
-	jobDir := filepath.Join(root, projectID, result.JobID)
-	deadline := time.Now().Add(5 * time.Second)
-	var pidData []byte
-	var readErr error
-	for time.Now().Before(deadline) {
-		pidData, readErr = os.ReadFile(filepath.Join(jobDir, "pid.txt"))
-		if readErr == nil {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if readErr != nil {
-		t.Fatalf("pid.txt was not written by goroutine within deadline: %v", readErr)
-	}
-
-	pid, convErr := strconv.Atoi(strings.TrimSpace(string(pidData)))
-	if convErr != nil || pid <= 0 {
-		t.Errorf("pid.txt: expected positive integer PID, got %q", string(pidData))
-	}
-
-	// Allow background goroutine to finish before TempDir cleanup.
-	time.Sleep(50 * time.Millisecond)
-}
-
-// ─── AC8: Start returns immediately ──────────────────────────────────────────
-
-// Scenario: Start command returns immediately with exit code 0
-func TestStartCommandReturnsImmediatelyWithExitCode0(t *testing.T) {
-	root := t.TempDir()
-	projectID := "test-project"
-	f := &cmd.Flags{Dir: t.TempDir(), Timeout: 3600, Prompt: "Long running task"}
-
-	start := time.Now()
-	var stdoutBuf bytes.Buffer
-	result, err := cmd.StartCmd(f, root, projectID, &stdoutBuf)
-	elapsed := time.Since(start)
-
-	if err != nil {
-		t.Fatalf("StartCmd unexpected error: %v", err)
-	}
-
-	// Must return in well under 1 second (background work continues asynchronously).
-	if elapsed > 2*time.Second {
-		t.Errorf("StartCmd took %v; expected immediate return (<2s)", elapsed)
-	}
-
-	// Job ID is printed to stdout with no extra decoration.
-	printed := strings.TrimSuffix(stdoutBuf.String(), "\n")
-	if printed != result.JobID {
-		t.Errorf("stdout: got %q, want job ID %q (no decoration)", printed, result.JobID)
-	}
-
-	// Allow background goroutine to finish before TempDir cleanup.
-	time.Sleep(50 * time.Millisecond)
-}
-
-// ─── AC9: Start background goroutine ─────────────────────────────────────────
-
-// Scenario: Start background goroutine handles execution
-func TestStartBackgroundGoroutineHandlesExecution(t *testing.T) {
-	root := t.TempDir()
-	projectID := "test-project"
-	f := &cmd.Flags{Dir: t.TempDir(), Timeout: 5, Prompt: "short task"}
-
-	var stdoutBuf bytes.Buffer
-	result, err := cmd.StartCmd(f, root, projectID, &stdoutBuf)
-	if err != nil {
-		t.Fatalf("StartCmd unexpected error: %v", err)
-	}
-
-	jobDir := filepath.Join(root, projectID, result.JobID)
-
-	// Wait for the background goroutine to complete (up to 10 seconds).
-	deadline := time.Now().Add(10 * time.Second)
-	var finalStatus string
-	for time.Now().Before(deadline) {
-		data, readErr := os.ReadFile(filepath.Join(jobDir, "status"))
-		if readErr == nil {
-			s := strings.TrimSpace(string(data))
-			if s != "queued" && s != "running" {
-				finalStatus = s
-				break
-			}
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	// Background goroutine must set a terminal status.
-	terminalStatuses := map[string]bool{
-		"done": true, "failed": true, "timeout": true,
-		"killed": true, "permission_error": true,
-	}
-	if !terminalStatuses[finalStatus] {
-		t.Errorf("background goroutine: expected terminal status, got %q", finalStatus)
-	}
-}
-
-// Scenario: Start background goroutine catches panic
-func TestStartBackgroundGoroutineCatchesPanic(t *testing.T) {
-	root := t.TempDir()
-	projectID := "test-project"
-
-	// Create a job dir with status "running" to simulate a panic mid-execution.
-	jobID := "job-20260227-100002-c3d4e5f6"
-	jobDir := makeJobDir(t, root, projectID, jobID, "running")
-	_ = jobDir
-
-	// StartCmd with a deliberately broken setup that will panic in the goroutine.
-	// For the stub test we just verify that after StartCmd, if the goroutine panics,
-	// the status file eventually becomes "failed".
-	f := &cmd.Flags{Dir: "/nonexistent-dir-to-cause-failure", Timeout: 1, Prompt: "crash task"}
-	var stdoutBuf bytes.Buffer
-	result, err := cmd.StartCmd(f, root, projectID, &stdoutBuf)
-	if err != nil {
-		// Acceptable: some implementations may return an error immediately.
-		return
-	}
-
-	// Wait briefly for goroutine to set "failed".
-	startedJobDir := filepath.Join(root, projectID, result.JobID)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		data, readErr := os.ReadFile(filepath.Join(startedJobDir, "status"))
-		if readErr == nil && strings.TrimSpace(string(data)) == "failed" {
-			return // pass
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Error("background goroutine panic: expected job status to become 'failed'")
-}
-
-// Scenario: Start with immediate crash sets failed status
-func TestStartWithImmediateCrashSetsFailedStatus(t *testing.T) {
-	root := t.TempDir()
-	projectID := "test-project"
-	f := &cmd.Flags{Dir: "/this-path-definitely-does-not-exist", Timeout: 1, Prompt: "crash"}
-
-	var stdoutBuf bytes.Buffer
-	result, err := cmd.StartCmd(f, root, projectID, &stdoutBuf)
-	if err != nil {
-		return // immediate error is acceptable
-	}
-
-	jobDir := filepath.Join(root, projectID, result.JobID)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		data, readErr := os.ReadFile(filepath.Join(jobDir, "status"))
-		if readErr == nil && strings.TrimSpace(string(data)) == "failed" {
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Error("expected failed status after immediate crash, timed out")
-}
-
 // ─── AC10: glm status — print current status ──────────────────────────────────
 
 // Scenario Outline: Status command prints correct status word
 // seed: status_responses.json
 func TestStatusCommandPrintsCorrectStatusWordDone(t *testing.T) {
+	t.Parallel()
 	testStatusWord(t, "done", "job-20260227-100000-a1b2c3d4")
 }
 
 func TestStatusCommandPrintsCorrectStatusWordRunning(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-101500-e5f6a7b8"
@@ -622,18 +357,22 @@ func TestStatusCommandPrintsCorrectStatusWordRunning(t *testing.T) {
 }
 
 func TestStatusCommandPrintsCorrectStatusWordFailed(t *testing.T) {
+	t.Parallel()
 	testStatusWord(t, "failed", "job-20260227-102000-c9d0e1f2")
 }
 
 func TestStatusCommandPrintsCorrectStatusWordTimeout(t *testing.T) {
+	t.Parallel()
 	testStatusWord(t, "timeout", "job-20260227-094500-f7e8d9c0")
 }
 
 func TestStatusCommandPrintsCorrectStatusWordKilled(t *testing.T) {
+	t.Parallel()
 	testStatusWord(t, "killed", "job-20260227-103000-b5a6c7d8")
 }
 
 func TestStatusCommandPrintsCorrectStatusWordPermissionError(t *testing.T) {
+	t.Parallel()
 	testStatusWord(t, "permission_error", "job-20260227-104500-d9e0f1a2")
 }
 
@@ -665,6 +404,7 @@ func testStatusWord(t *testing.T, status, jobID string) {
 // Scenario: Status detects dead PID and updates to failed
 // seed: status_responses.json scenario "running_stale"
 func TestStatusDetectsDeadPIDAndUpdatesToFailed(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-101500-stale000"
@@ -695,6 +435,7 @@ func TestStatusDetectsDeadPIDAndUpdatesToFailed(t *testing.T) {
 // Scenario: Status confirms running job with live PID
 // seed: status_responses.json scenario "running"
 func TestStatusConfirmsRunningJobWithLivePID(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-101500-alive001"
@@ -721,6 +462,7 @@ func TestStatusConfirmsRunningJobWithLivePID(t *testing.T) {
 // Scenario: Status on non-existent job returns not_found
 // seed: status_responses.json scenario "not_found"
 func TestStatusOnNonExistentJobReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-999999-deadbeef"
@@ -745,6 +487,7 @@ func TestStatusOnNonExistentJobReturnsNotFound(t *testing.T) {
 // Scenario: Result on running job returns error
 // seed: result_on_running.json
 func TestResultOnRunningJobReturnsError(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100003-d4e5f6a7"
@@ -767,6 +510,7 @@ func TestResultOnRunningJobReturnsError(t *testing.T) {
 
 // Scenario: Result on queued job returns error
 func TestResultOnQueuedJobReturnsError(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100004-e5f6a7b8"
@@ -791,6 +535,7 @@ func TestResultOnQueuedJobReturnsError(t *testing.T) {
 
 // Scenario: Result on failed job prints stderr as warning
 func TestResultOnFailedJobPrintsStderrAsWarning(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100005-f6a7b8c9"
@@ -814,6 +559,7 @@ func TestResultOnFailedJobPrintsStderrAsWarning(t *testing.T) {
 
 // Scenario: Result on timed-out job prints stderr as warning
 func TestResultOnTimedOutJobPrintsStderrAsWarning(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100006-a7b8c9d0"
@@ -834,6 +580,7 @@ func TestResultOnTimedOutJobPrintsStderrAsWarning(t *testing.T) {
 
 // Scenario: Result on permission_error job prints stderr as warning
 func TestResultOnPermissionErrorJobPrintsStderrAsWarning(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100007-b8c9d0e1"
@@ -856,6 +603,7 @@ func TestResultOnPermissionErrorJobPrintsStderrAsWarning(t *testing.T) {
 
 // Scenario: Result prints stdout and deletes job directory
 func TestResultPrintsStdoutAndDeletesJobDirectory(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100008-c9d0e1f2"
@@ -889,6 +637,7 @@ func TestResultPrintsStdoutAndDeletesJobDirectory(t *testing.T) {
 
 // Scenario: Result returns exit code 0 on success
 func TestResultReturnsExitCode0OnSuccess(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100009-d0e1f2a3"
@@ -907,6 +656,7 @@ func TestResultReturnsExitCode0OnSuccess(t *testing.T) {
 
 // Scenario: Result returns exit code 3 if job not found
 func TestResultReturnsExitCode3IfJobNotFound(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-999999-deadbeef"
@@ -926,6 +676,7 @@ func TestResultReturnsExitCode3IfJobNotFound(t *testing.T) {
 
 // Scenario: Result on already-deleted job returns not_found
 func TestResultOnAlreadyDeletedJobReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100010-e1f2a3b4"
@@ -956,35 +707,9 @@ func TestResultOnAlreadyDeletedJobReturnsNotFound(t *testing.T) {
 	}
 }
 
-// Scenario: Run interrupted with Ctrl-C propagates signal
-func TestRunInterruptedWithCtrlCPropagatesSignal(t *testing.T) {
-	// This test verifies the contract: on SIGINT the job status becomes "failed"
-	// and the job directory is cleaned up.
-	// Full signal propagation requires integration testing; here we verify the
-	// post-condition by directly inspecting the job state after a cancelled run.
-
-	root := t.TempDir()
-	projectID := "proj"
-	f := &cmd.Flags{Dir: t.TempDir(), Timeout: 1, Prompt: "signal test"}
-
-	var stdoutBuf, stderrBuf bytes.Buffer
-	result, err := cmd.RunCmd(f, root, projectID, &stdoutBuf, &stderrBuf)
-	if err != nil {
-		// An error is acceptable — it may be propagated as a failure.
-		return
-	}
-
-	// Regardless of exit code, job directory must be cleaned up.
-	if result.JobID != "" {
-		jobDir := filepath.Join(root, projectID, result.JobID)
-		if _, statErr := os.Stat(jobDir); !os.IsNotExist(statErr) {
-			t.Errorf("job directory should be cleaned up after run completion/failure")
-		}
-	}
-}
-
 // Scenario: Empty stdout.txt prints nothing
 func TestEmptyStdoutTxtPrintsNothing(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100011-f2a3b4c5"
@@ -1007,6 +732,7 @@ func TestEmptyStdoutTxtPrintsNothing(t *testing.T) {
 
 // Scenario: Status called concurrently with execution completing
 func TestStatusCalledConcurrentlyWithExecutionCompleting(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	projectID := "proj"
 	jobID := "job-20260227-100012-a3b4c5d6"

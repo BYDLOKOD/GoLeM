@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/veschin/GoLeM/internal/event"
 )
 
 // ---------------------------------------------------------------------------
@@ -103,7 +105,7 @@ func findDeadPID(t *testing.T) int {
 // LockPath return the correct filenames relative to the subagent directory.
 func TestCounterAndLockFilesAreAtExpectedPaths(t *testing.T) {
 	dir := t.TempDir()
-	sm := NewSlotManager(dir, DefaultAPIRPS)
+	sm := NewSlotManager(dir, 3)
 
 	wantCounter := filepath.Join(dir, ".running_count")
 	wantLock := filepath.Join(dir, ".counter.lock")
@@ -123,7 +125,7 @@ func TestCounterAndLockFilesAreAtExpectedPaths(t *testing.T) {
 // TestClaimSlotIncrementsCounterFromZero verifies seed counter_file_zero.txt
 // (value 0) becomes 1 after ClaimSlot.
 func TestClaimSlotIncrementsCounterFromZero(t *testing.T) {
-	sm, dir := newSMWithCounter(t, DefaultAPIRPS, 0)
+	sm, dir := newSMWithCounter(t, 3, 0)
 
 	if err := sm.ClaimSlot(); err != nil {
 		t.Fatalf("ClaimSlot() error: %v", err)
@@ -138,7 +140,7 @@ func TestClaimSlotIncrementsCounterFromZero(t *testing.T) {
 // TestClaimSlotIncrementUnderExclusiveLock verifies that ClaimSlot creates the
 // lock file (proof that flock-based locking occurred) and increments correctly.
 func TestClaimSlotIncrementUnderExclusiveLock(t *testing.T) {
-	sm, dir := newSMWithCounter(t, DefaultAPIRPS, 0)
+	sm, dir := newSMWithCounter(t, 3, 0)
 
 	if err := sm.ClaimSlot(); err != nil {
 		t.Fatalf("ClaimSlot() error: %v", err)
@@ -177,7 +179,7 @@ func TestClaimSlotIncrementsCounterFromExistingValue(t *testing.T) {
 // TestReleaseSlotDecrementsCounter verifies seed counter_file_valid.txt
 // (value 3) becomes 2 after ReleaseSlot, performed under exclusive lock.
 func TestReleaseSlotDecrementsCounter(t *testing.T) {
-	sm, dir := newSMWithCounter(t, DefaultAPIRPS, 3)
+	sm, dir := newSMWithCounter(t, 3, 3)
 
 	if err := sm.ReleaseSlot(); err != nil {
 		t.Fatalf("ReleaseSlot() error: %v", err)
@@ -197,7 +199,7 @@ func TestReleaseSlotDecrementsCounter(t *testing.T) {
 // TestReleaseSlotNeverGoesBelowZero verifies seed counter_file_zero.txt
 // (value 0) stays at 0 after ReleaseSlot.
 func TestReleaseSlotNeverGoesBelowZero(t *testing.T) {
-	sm, dir := newSMWithCounter(t, DefaultAPIRPS, 0)
+	sm, dir := newSMWithCounter(t, 3, 0)
 
 	if err := sm.ReleaseSlot(); err != nil {
 		t.Fatalf("ReleaseSlot() error: %v", err)
@@ -212,7 +214,7 @@ func TestReleaseSlotNeverGoesBelowZero(t *testing.T) {
 // TestCounterClampedToZeroOnDoubleRelease verifies seed counter_file_negative.txt
 // (value -2) becomes 0 after ReleaseSlot.
 func TestCounterClampedToZeroOnDoubleRelease(t *testing.T) {
-	sm, dir := newSMWithCounter(t, DefaultAPIRPS, -2)
+	sm, dir := newSMWithCounter(t, 3, -2)
 
 	if err := sm.ReleaseSlot(); err != nil {
 		t.Fatalf("ReleaseSlot() error: %v", err)
@@ -251,14 +253,20 @@ func TestSlotClaimedImmediatelyWhenUnderLimit(t *testing.T) {
 }
 
 // TestSlotBlocksWhenAtCapacity verifies slot_scenario_at_limit.json:
-// counter=3, max_parallel=3 → call blocks and polls every 2 seconds.
-// We free a slot from a goroutine after 3 seconds to unblock the waiter.
+// counter=3, max_parallel=3 → call blocks until a slot is released via
+// notification. We free a slot from a goroutine after 300ms to unblock
+// the waiter.
 func TestSlotBlocksWhenAtCapacity(t *testing.T) {
 	sm, dir := newSMWithCounter(t, 3, 3)
 
-	// Release one slot after 3 seconds so the waiter can proceed.
+	// Start the notifier for fast wake-up.
+	if err := sm.StartNotifier(); err != nil {
+		t.Fatalf("StartNotifier: %v", err)
+	}
+	defer sm.StopNotifier()
+
 	go func() {
-		time.Sleep(3 * time.Second)
+		time.Sleep(300 * time.Millisecond)
 		if err := sm.ReleaseSlot(); err != nil {
 			// Non-fatal in goroutine; test will catch the symptom.
 			fmt.Printf("goroutine ReleaseSlot error: %v\n", err)
@@ -271,9 +279,9 @@ func TestSlotBlocksWhenAtCapacity(t *testing.T) {
 	}
 	elapsed := time.Since(start)
 
-	// Must have blocked for at least 2 seconds (one full poll cycle).
-	if elapsed < 2*time.Second {
-		t.Errorf("WaitForSlot returned after only %v, expected at least 2s block", elapsed)
+	// Must have blocked for at least 200ms (the goroutine sleeps 300ms).
+	if elapsed < 200*time.Millisecond {
+		t.Errorf("WaitForSlot returned after only %v, expected at least 200ms block", elapsed)
 	}
 
 	// After: release(3→2) then claim(2→3), so counter is 3.
@@ -281,8 +289,6 @@ func TestSlotBlocksWhenAtCapacity(t *testing.T) {
 	if got != 3 {
 		t.Errorf("counter after WaitForSlot (was at limit) = %d, want 3", got)
 	}
-
-	_ = dir
 }
 
 // TestSlotClaimedImmediatelyWhenMaxParallelIsZero verifies slot_scenario_unlimited.json:
@@ -345,7 +351,7 @@ func TestUsesSyscallFlockOnMacOS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenFile: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
 		t.Fatalf("syscall.Flock LOCK_EX: %v", err)
@@ -370,7 +376,7 @@ func TestFallbackToMkdirLockingWhenFlockUnavailable(t *testing.T) {
 
 	// Force fallback mode; ClaimSlot must still work.
 	t.Setenv("LOCK_FALLBACK", "true")
-	sm := NewSlotManager(dir, DefaultAPIRPS)
+	sm := NewSlotManager(dir, 3)
 	writeCounterFile(t, dir, "0")
 
 	if err := sm.ClaimSlot(); err != nil {
@@ -391,7 +397,7 @@ func TestFallbackToMkdirLockingWhenFlockUnavailable(t *testing.T) {
 // scenario: 3 running jobs (2 alive, 1 dead), 1 queued.
 // Expected: dead job → failed, counter → 2, alive/queued jobs unchanged.
 func TestReconcileDetectsDeadRunningJobsAndResetsCounter(t *testing.T) {
-	sm, dir := newSMWithCounter(t, DefaultAPIRPS, 3)
+	sm, dir := newSMWithCounter(t, 3, 3)
 
 	alivePID1 := os.Getpid() // current test process — definitely alive
 	alivePID2 := 1           // PID 1 (init) is always alive on Linux
@@ -462,7 +468,7 @@ func TestReconcileDetectsDeadRunningJobsAndResetsCounter(t *testing.T) {
 // TestReconciliationRunsOnceAtStartup verifies that Reconcile is idempotent
 // when called with no running jobs, and that a second call does not corrupt state.
 func TestReconciliationRunsOnceAtStartup(t *testing.T) {
-	sm, dir := newSMWithCounter(t, DefaultAPIRPS, 0)
+	sm, dir := newSMWithCounter(t, 3, 0)
 
 	// First call: no jobs, counter stays 0.
 	if err := sm.Reconcile([]*Job{}); err != nil {
@@ -549,16 +555,8 @@ func TestProcessGroupTerminationPreventsOrphanClaudeProcesses(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// AC8: api_rps respects Z.AI rate limits
+// AC8: unlimited-by-default behavior
 // ---------------------------------------------------------------------------
-
-// TestDefaultAPIRPSMatchesZAILimits verifies that DefaultAPIRPS == 3,
-// matching the typical Z.AI coding plan concurrency limit.
-func TestDefaultAPIRPSMatchesZAILimits(t *testing.T) {
-	if DefaultAPIRPS != 3 {
-		t.Errorf("DefaultAPIRPS = %d, want 3 (matches Z.AI coding plan concurrency limit)", DefaultAPIRPS)
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Edge cases
@@ -567,7 +565,7 @@ func TestDefaultAPIRPSMatchesZAILimits(t *testing.T) {
 // TestCounterFileDoesNotExistAtStartup verifies that Init creates the counter
 // file with value 0 when it does not exist.
 func TestCounterFileDoesNotExistAtStartup(t *testing.T) {
-	sm, dir := newSM(t, DefaultAPIRPS)
+	sm, dir := newSM(t, 3)
 
 	// Ensure counter file is absent.
 	_ = os.Remove(filepath.Join(dir, CounterFile))
@@ -585,7 +583,7 @@ func TestCounterFileDoesNotExistAtStartup(t *testing.T) {
 // TestCounterFileContainsNonIntegerValue verifies that Init resets a counter
 // file containing "abc" (seed counter_file_invalid.txt) to 0.
 func TestCounterFileContainsNonIntegerValue(t *testing.T) {
-	sm, dir := newSM(t, DefaultAPIRPS)
+	sm, dir := newSM(t, 3)
 	writeCounterFile(t, dir, "abc")
 
 	if err := sm.Init(); err != nil {
@@ -601,7 +599,7 @@ func TestCounterFileContainsNonIntegerValue(t *testing.T) {
 // TestStaleLockFileFromDeadProcessHandledByFlock verifies that a lock file
 // left by a dead process does not prevent a new flock acquisition.
 func TestStaleLockFileFromDeadProcessHandledByFlock(t *testing.T) {
-	sm, dir := newSMWithCounter(t, DefaultAPIRPS, 0)
+	sm, dir := newSMWithCounter(t, 3, 0)
 
 	// Create a stale lock file.
 	if err := os.WriteFile(sm.LockPath(), []byte("stale"), 0o644); err != nil {
@@ -643,7 +641,7 @@ func TestStaleMkdirLockHas60SecondStalenessDetection(t *testing.T) {
 
 	// ClaimSlot in fallback mode must succeed after the stale lock is removed.
 	t.Setenv("LOCK_FALLBACK", "true")
-	sm := NewSlotManager(dir, DefaultAPIRPS)
+	sm := NewSlotManager(dir, 3)
 	writeCounterFile(t, dir, "0")
 
 	if err := sm.ClaimSlot(); err != nil {
@@ -713,7 +711,7 @@ func TestPIDReuseAcceptedAsFalsePositiveDuringReconciliation(t *testing.T) {
 		t.Errorf("IsProcessAlive(%d) = false, want true (PID reuse false positive)", pid)
 	}
 
-	sm, dir := newSMWithCounter(t, DefaultAPIRPS, 1)
+	sm, dir := newSMWithCounter(t, 3, 1)
 
 	jobs := []*Job{
 		{
@@ -736,5 +734,159 @@ func TestPIDReuseAcceptedAsFalsePositiveDuringReconciliation(t *testing.T) {
 	// Counter must remain 1.
 	if got := readCounterFileInt(t, dir); got != 1 {
 		t.Errorf("counter after Reconcile (PID reuse) = %d, want 1", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Event producer tests (P2.1)
+// ---------------------------------------------------------------------------
+
+// TestWaitForSlot_PublishesSlotAcquired verifies that WaitForSlot publishes a
+// SlotAcquired event with the correct current_count and max_parallel.
+func TestWaitForSlot_PublishesSlotAcquired(t *testing.T) {
+	bus := event.NewBus()
+	defer bus.Close()
+
+	ch := bus.Subscribe(event.SlotAcquired)
+
+	dir := t.TempDir()
+	sm := NewSlotManager(dir, 3)
+	sm.SetBus(bus)
+	if err := sm.Init(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	if err := sm.WaitForSlot(); err != nil {
+		t.Fatalf("WaitForSlot: %v", err)
+	}
+
+	select {
+	case e := <-ch:
+		if e.Type != event.SlotAcquired {
+			t.Errorf("type = %v, want %v", e.Type, event.SlotAcquired)
+		}
+		data, ok := e.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("Data is not map[string]any: %T", e.Data)
+		}
+		if data["current_count"] != 1 {
+			t.Errorf("current_count = %v, want 1", data["current_count"])
+		}
+		if data["max_parallel"] != 3 {
+			t.Errorf("max_parallel = %v, want 3", data["max_parallel"])
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for SlotAcquired event")
+	}
+}
+
+// TestWaitForSlot_UnlimitedPublishesSlotAcquired verifies that WaitForSlot
+// publishes a SlotAcquired event even when maxParallel is 0 (unlimited).
+func TestWaitForSlot_UnlimitedPublishesSlotAcquired(t *testing.T) {
+	bus := event.NewBus()
+	defer bus.Close()
+
+	ch := bus.Subscribe(event.SlotAcquired)
+
+	dir := t.TempDir()
+	sm := NewSlotManager(dir, 0)
+	sm.SetBus(bus)
+	if err := sm.Init(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	if err := sm.WaitForSlot(); err != nil {
+		t.Fatalf("WaitForSlot: %v", err)
+	}
+
+	select {
+	case e := <-ch:
+		if e.Type != event.SlotAcquired {
+			t.Errorf("type = %v, want %v", e.Type, event.SlotAcquired)
+		}
+		data, ok := e.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("Data is not map[string]any: %T", e.Data)
+		}
+		if data["max_parallel"] != 0 {
+			t.Errorf("max_parallel = %v, want 0", data["max_parallel"])
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for SlotAcquired event (unlimited)")
+	}
+}
+
+// TestReleaseSlot_PublishesSlotReleased verifies that ReleaseSlot publishes a
+// SlotReleased event with the correct current_count and max_parallel.
+func TestReleaseSlot_PublishesSlotReleased(t *testing.T) {
+	bus := event.NewBus()
+	defer bus.Close()
+
+	ch := bus.Subscribe(event.SlotReleased)
+
+	dir := t.TempDir()
+	sm := NewSlotManager(dir, 3)
+	sm.SetBus(bus)
+	if err := sm.Init(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if err := sm.WaitForSlot(); err != nil {
+		t.Fatalf("WaitForSlot: %v", err)
+	}
+
+	if err := sm.ReleaseSlot(); err != nil {
+		t.Fatalf("ReleaseSlot: %v", err)
+	}
+
+	select {
+	case e := <-ch:
+		if e.Type != event.SlotReleased {
+			t.Errorf("type = %v, want %v", e.Type, event.SlotReleased)
+		}
+		data, ok := e.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("Data is not map[string]any: %T", e.Data)
+		}
+		if data["current_count"] != 0 {
+			t.Errorf("current_count = %v, want 0", data["current_count"])
+		}
+		if data["max_parallel"] != 3 {
+			t.Errorf("max_parallel = %v, want 3", data["max_parallel"])
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for SlotReleased event")
+	}
+}
+
+// TestWaitForSlot_NilBus_NoPanic verifies that WaitForSlot and ReleaseSlot do
+// not panic when the bus is nil (the default).
+func TestWaitForSlot_NilBus_NoPanic(t *testing.T) {
+	dir := t.TempDir()
+	sm := NewSlotManager(dir, 1)
+	// Bus is nil by default.
+	if err := sm.Init(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	if err := sm.WaitForSlot(); err != nil {
+		t.Fatalf("WaitForSlot: %v", err)
+	}
+	if err := sm.ReleaseSlot(); err != nil {
+		t.Fatalf("ReleaseSlot: %v", err)
+	}
+}
+
+// TestSetBus_SlotManager_ReturnsReceiverForChaining verifies that SetBus
+// returns the SlotManager receiver for method chaining.
+func TestSetBus_SlotManager_ReturnsReceiverForChaining(t *testing.T) {
+	dir := t.TempDir()
+	sm := NewSlotManager(dir, 1)
+
+	bus := event.NewBus()
+	defer bus.Close()
+
+	got := sm.SetBus(bus)
+	if got != sm {
+		t.Error("SetBus did not return the receiver")
 	}
 }

@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/veschin/GoLeM/internal/event"
 )
 
 // Status represents the lifecycle state of a job.
@@ -59,7 +61,7 @@ func ValidateJobID(jobID string) error {
 		return fmt.Errorf("err:validation job ID is empty")
 	}
 	for _, r := range jobID {
-		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' && r != '_' {
 			return fmt.Errorf("err:validation job ID contains invalid character: %q", r)
 		}
 	}
@@ -70,7 +72,28 @@ func ValidateJobID(jobID string) error {
 type Job struct {
 	ID        string
 	ProjectID string
-	Dir       string // absolute path to the job directory
+	Dir       string     // absolute path to the job directory
+	Bus       *event.Bus // optional event bus
+}
+
+// SetBus sets the event bus on the Job. Returns the receiver for chaining.
+func (j *Job) SetBus(bus *event.Bus) *Job {
+	j.Bus = bus
+	return j
+}
+
+// EmitQueued publishes a JobQueued event if the bus is set.
+// Call this after SetBus if you want queued events.
+func (j *Job) EmitQueued() {
+	event.Publish(j.Bus, event.Event{
+		Type:      event.JobQueued,
+		JobID:     j.ID,
+		Timestamp: time.Now().UTC(),
+		Data: map[string]any{
+			"project_id": j.ProjectID,
+			"job_id":     j.ID,
+		},
+	})
 }
 
 // NewJob creates a new job directory under subagentsRoot/<projectID>/<jobID>/,
@@ -196,11 +219,11 @@ func (j *Job) StatusTransition(newStatus Status) error {
 	if err != nil {
 		return fmt.Errorf("status lock: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
 		return fmt.Errorf("status flock: %w", err)
 	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	defer func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }()
 
 	current := ReadStatus(j.Dir)
 	allowed := allowedTransitions[current]

@@ -17,6 +17,9 @@ type Flags struct {
 	SonnetModel    string
 	HaikuModel     string
 	PermissionMode string
+	Tier           string // "light", "medium", "heavy", "auto", or "" (auto)
+	SystemPrompt   string
+	Constraints    []string
 	Prompt         string
 }
 
@@ -32,15 +35,15 @@ func ParseFlags(args []string) (*Flags, error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 
-		switch {
-		case arg == "-d":
+		switch arg {
+		case "-d":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf(`err:user "Missing value for -d flag"`)
 			}
 			f.Dir = args[i+1]
 			i++
 
-		case arg == "-t":
+		case "-t":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf(`err:user "Missing value for -t flag"`)
 			}
@@ -52,42 +55,68 @@ func ParseFlags(args []string) (*Flags, error) {
 			f.Timeout = timeout
 			i++
 
-		case arg == "-m" || arg == "--model":
+		case "-m", "--model":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf(`err:user "Missing value for -m flag"`)
 			}
 			f.Model = args[i+1]
 			i++
 
-		case arg == "--opus":
+		case "--opus":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf(`err:user "Missing value for --opus flag"`)
 			}
 			f.OpusModel = args[i+1]
 			i++
 
-		case arg == "--sonnet":
+		case "--sonnet":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf(`err:user "Missing value for --sonnet flag"`)
 			}
 			f.SonnetModel = args[i+1]
 			i++
 
-		case arg == "--haiku":
+		case "--haiku":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf(`err:user "Missing value for --haiku flag"`)
 			}
 			f.HaikuModel = args[i+1]
 			i++
 
-		case arg == "--unsafe":
+		case "--unsafe":
 			f.PermissionMode = "bypassPermissions"
 
-		case arg == "--mode":
+		case "--mode":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf(`err:user "Missing value for --mode flag"`)
 			}
 			f.PermissionMode = args[i+1]
+			i++
+
+		case "--tier":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf(`err:user "Missing value for --tier flag"`)
+			}
+			val := args[i+1]
+			validTiers := map[string]bool{"light": true, "medium": true, "heavy": true, "auto": true}
+			if !validTiers[val] {
+				return nil, fmt.Errorf(`err:user "Invalid --tier value: %s (must be light, medium, heavy, or auto)"`, val)
+			}
+			f.Tier = val
+			i++
+
+		case "--system-prompt":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf(`err:user "Missing value for --system-prompt flag"`)
+			}
+			f.SystemPrompt = args[i+1]
+			i++
+
+		case "--constraint":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf(`err:user "Missing value for --constraint flag"`)
+			}
+			f.Constraints = append(f.Constraints, args[i+1])
 			i++
 
 		default:

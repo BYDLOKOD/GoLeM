@@ -1,6 +1,0 @@
-{
-  "description": "Result command on a still-running job should return an error",
-  "job_status": "running",
-  "expected_error": "err:user Job is still running",
-  "expected_exit": 1
-}

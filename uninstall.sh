@@ -4,8 +4,6 @@ set -euo pipefail
 # One-liner: curl -sL https://raw.githubusercontent.com/veschin/GoLeM/main/uninstall.sh | bash
 # Or: bash <(curl -sL https://raw.githubusercontent.com/veschin/GoLeM/main/uninstall.sh)
 
-BIN_DIR="${HOME}/.local/bin"
-TARGET_BIN="${BIN_DIR}/glm"
 CLONE_DIR="${HOME}/.local/share/GoLeM"
 
 RED='\033[0;31m'
@@ -36,12 +34,6 @@ fi
 
 # --- Fallback: manual cleanup if glm is not in PATH ---
 warn "glm not found in PATH, performing manual cleanup..."
-
-# Remove binary/symlink
-if [[ -L "$TARGET_BIN" || -f "$TARGET_BIN" ]]; then
-    rm -f "$TARGET_BIN"
-    info "Removed: $TARGET_BIN"
-fi
 
 # Remove completions
 for comp_dir in "/usr/share/bash-completion/completions" \

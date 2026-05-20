@@ -54,6 +54,30 @@ Example: `/home/user/myproject` -> `myproject-3842719234`.
 `ValidateJobID(id)` accepts only lowercase alphanumeric, `-`, and `_`. Empty
 IDs and IDs containing path separators or dots return `err:validation`.
 
+## NewJob
+
+`NewJob(subagentsRoot, projectID, jobID string) (*Job, error)` creates the job
+directory at `subagentsRoot/<projectID>/<jobID>/` via `os.MkdirAll`, validates
+`jobID` with `ValidateJobID`, writes the initial `queued` status atomically,
+and returns a `*Job` with `ID`, `ProjectID`, and `Dir` populated (`job.go:101`).
+
+## Job struct
+
+`Job` holds metadata for a single subagent job (`job.go:72`):
+
+- `ID string` - the job identifier.
+- `ProjectID string` - the project scope.
+- `Dir string` - absolute path to the job directory on disk.
+- `Bus *event.Bus` - optional event bus.
+
+`SetBus(bus *event.Bus) *Job` wires the event bus and returns the receiver for
+chaining (`job.go:80`).
+
+## DeleteJob
+
+`DeleteJob(dir string) error` removes the entire job directory tree with
+`os.RemoveAll` (`job.go:185`).
+
 ## Status FSM
 
 States and allowed transitions:
@@ -106,6 +130,19 @@ file. The whole operation is protected by an exclusive flock on
 `CleanStale(subagentsDir)` removes all job directories whose `stderr.txt`
 contains the `__stale_recovered__` marker. Manually killed or otherwise
 failed jobs are left intact.
+
+`CheckJobPID(jobDir string) (string, error)` reads the status and PID for a
+single job. If the status is `running` and the PID is dead, it sets the
+status to `failed`, appends the death diagnostic and the `__stale_recovered__`
+marker to stderr, and returns `"failed"`. Otherwise returns the current status
+unchanged (`reconcile.go:132`). Unlike `Reconcile`, it does not perform a full
+scan or update the slot counter.
+
+`IsStaleQueued(jobDir string, now time.Time) (bool, error)` reads
+`created_at.txt` from the job directory and reports whether the job has been
+in `queued` state longer than `staleQueueThreshold` (5 minutes) relative to
+`now` (`reconcile.go:156`). Returns an error if `created_at.txt` is missing or
+contains an unparseable timestamp.
 
 ## FindJobDir search order
 

@@ -20,6 +20,14 @@ In practice GoLeM currently always passes `0` (unlimited) to
 (per-model semaphores). The slot manager still runs to maintain the counter
 file for reconciliation and to publish `SlotAcquired`/`SlotReleased` events.
 
+## Job types
+
+The slot package defines its own `JobStatus` type and `Job` struct
+(`slot.go:31-47`), separate from `job.Job` in `internal/job/`. The slot-level
+`Job` holds reconciliation metadata (`JobID`, `Status`, `PID`, `HasPID`,
+`Stderr`) and is consumed by `SlotManager.Reconcile`. The `job.Job` struct
+holds lifecycle and filesystem state (`ID`, `ProjectID`, `Dir`, `Bus`).
+
 ## Files on disk
 
 Both files live in `subagentsDir` (default `~/.claude/subagents/`):
@@ -106,3 +114,40 @@ with EPERM returns false.
 
 `TerminateProcessGroup(pid)` sends SIGTERM to `-pid` (process group), waits
 1 s, then sends SIGKILL.
+
+## SlotManager.Reconcile
+
+`SlotManager.Reconcile(jobs []*Job) error` accepts a slice of slot-level
+`Job` values, counts those that are running with a live PID, marks dead ones
+as failed (appending a death message to their `Stderr` field), and resets the
+counter file to the alive count under lock (`slot.go:328`). This is the
+slot-package counterpart to `job.Reconcile`.
+
+## Facade methods
+
+- `StartNotifier() error` delegates to `sm.notifier.Start()` (`slot.go:75`).
+- `StopNotifier()` delegates to `sm.notifier.Stop()` (`slot.go:80`).
+
+These let callers manage the Unix socket notifier through the `SlotManager`
+without holding a direct reference to `SlotNotifier`.
+
+## Path helpers
+
+- `CounterPath() string` returns `filepath.Join(sm.dir, CounterFile)` (`slot.go:85`).
+- `LockPath() string` returns `filepath.Join(sm.dir, LockFile)` (`slot.go:90`).
+
+## Zombie detection via /proc
+
+`isZombieViaProc(pid int) bool` reads `/proc/<pid>/stat`, parses the state
+field (the character after the closing `)` of the comm field), and returns
+`true` when the state is `Z` (`slot.go:354`). Returns `false` when `/proc` is
+not available. This is used by `IsProcessAlive` to distinguish zombie
+processes from live ones.
+
+## Atomic write strategy
+
+The slot package uses `os.CreateTemp(dir, ".counter-tmp-*")` with a random
+suffix for atomic counter writes (`slot.go:146-169`), then renames to the
+target. This differs from `job.AtomicWrite` which uses a pid-based temporary
+name (`path + ".tmp." + pid`). The random suffix avoids collisions when
+multiple processes write to the same counter concurrently.

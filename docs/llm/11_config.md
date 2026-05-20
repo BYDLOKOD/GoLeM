@@ -54,6 +54,10 @@ Default paths: `configDir = ~/.config/GoLeM`, `subagentDir = ~/.claude/subagents
 | `api_rps` | - | ignored | Silently ignored for backward compatibility. |
 | `max_parallel` | - | ignored | Silently ignored for backward compatibility. |
 
+Note: `debug` is not a TOML key. It is settable only via the `GLM_DEBUG`
+environment variable or `glm config set debug true`. The TOML parser
+(`parseGlobalKey`, `config.go:212-265`) has no `case "debug"`.
+
 ## `[routing]` section
 
 ```toml
@@ -102,6 +106,14 @@ all commands use `config.Load` which reads Z.AI defaults directly.
 
 `default_provider = "zai"` at top level selects the default when no name is passed.
 
+`ListProviders(configDir)` (`provider.go:105-124`) returns all provider names
+from `glm.toml` in sorted order. If no providers are configured, returns
+`["zai"]` (the hardcoded default).
+
+`Provider.APIKey()` (`provider.go:28-38`) performs tilde expansion on
+`APIKeyFile` via `expandTilde`, then reads and returns the file content with
+whitespace trimmed. Returns `err:config` if the file is missing or unreadable.
+
 ## Environment variable overrides
 
 | Variable | Overrides |
@@ -132,7 +144,26 @@ Supported formats:
 Whitespace and newlines are stripped. A missing file or empty content
 produces `err:config` and prevents startup.
 
+## TOML parsing behavior
+
+`parseTOML` (`config.go:134-174`) silently ignores unknown keys and unknown
+section headers. Only `[routing]`, `[models]`, and `[providers.*]` sections
+are recognized; any other `[section]` header resets the parser to the global
+key context. Unknown top-level keys fall through the `parseGlobalKey` switch
+with no side effect (`config.go:263`).
+
 ## Validation rules
 
 `permission_mode` must be one of: `bypassPermissions`, `acceptEdits`,
 `default`, `plan`. Any other value returns `err:validation`.
+
+## `config set` constraints
+
+`glm config set KEY VALUE` validates the key against `KnownConfigKeys`
+(`internal/cmd/doctor.go:457-464`). Accepted keys:
+
+- `model`, `opus_model`, `sonnet_model`, `haiku_model` -- any non-empty string.
+- `permission_mode` -- must be one of the four valid modes listed above.
+- `debug` -- must be `true`, `false`, `1`, or `0` (`doctor.go:518-522`).
+
+Unknown keys produce `err:user`.

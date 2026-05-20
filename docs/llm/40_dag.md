@@ -8,11 +8,21 @@ touches: internal/dag/
 
 See also: [31_mcp_tools.md](31_mcp_tools.md) · [51_artifact.md](51_artifact.md) · [52_validation.md](52_validation.md).
 
+## File loading (`dag/pipeline.go`)
+
+`dag.LoadDAGFromFile(path string) (*DAG, error)` is the exported entry point
+for loading a DAG from disk. It reads the file, checks the extension, and
+delegates to the private `loadDAGFromJSON(data []byte)` for JSON parsing.
+Only `.json` is supported; other extensions return
+`fmt.Errorf("dag: unsupported file format ...")`.
+
+`pipeline.go` is intentionally small -- it isolates serialization from the
+DAG type logic in `dag.go` and the execution logic in `executor.go`.
+
 ## Pipeline file format
 
-`glm pipeline FILE` loads a `.json` file. Only `.json` extension is supported.
-The exported function is `dag.LoadDAGFromFile(path)` which internally calls
-the private `loadDAGFromJSON`. The top-level structure:
+`glm pipeline FILE` loads a `.json` file via `LoadDAGFromFile`. The top-level
+structure:
 
 ```json
 {

@@ -109,6 +109,28 @@ srv.RegisterTool(mcp.ToolDefinition{
 `ToolContext` carries `Cfg`, `SubagentsRoot`, and `ProjectID`. When created
 with an empty string, `NewToolContext` defaults `ProjectID` to `"mcp"`.
 
+## Additional types
+
+Exported types beyond `Request`/`Response` (all in `internal/mcp/`):
+
+| Type | File | Purpose |
+|------|------|---------|
+| `Notification` | `protocol.go:32` | JSON-RPC notification (no `id` field). Used by `handleNotification`. |
+| `ToolsCallParams` | `protocol.go:74` | Params for `tools/call`: `Name string` + `Arguments json.RawMessage`. |
+| `ToolsCallResult` | `protocol.go:80` | Result wrapper for `tools/call`: `Content []ToolResultContent`. |
+| `ToolResultContent` | `protocol.go:85` | Single content block: `Type string` (`"text"`) + `Text string`. |
+| `ToolDefinition` | `handler.go:17` | Tool metadata for `tools/list`: `Name`, `Description`, `InputSchema`. |
+| `ToolHandler` | `handler.go:12` | Interface: `Handle(ctx, json.RawMessage) (json.RawMessage, error)`. |
+| `errMCPInternal` | `errors.go:6` | Sentinel builder: returns `fmt.Errorf("err:mcp: %s", msg)`. |
+
+## Test injection helpers (`internal/mcp/tools/context.go`)
+
+`productionSignalFn` (line 41) wraps `syscall.Kill(-pid, sig)` to send a signal
+to a process group. `productionSleepFn` (line 46) sleeps for 1 second.
+
+Both are passed as arguments to `cmd.KillCmd` (`tools/kill.go:43`) so tests in
+`internal/cmd/` can inject deterministic fakes instead of real signals or sleeps.
+
 ## Known gap
 
 Event bus is created in `cmdMCP` but not connected to the MCP transport for

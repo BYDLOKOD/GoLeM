@@ -36,6 +36,9 @@ const (
 `JobProgress`, `ToolUse`, and `JobKilled` are defined but not currently emitted
 by any producer.
 
+`EventType.String()` returns the constant name (e.g. `"JobQueued"`, `"SlotReleased"`).
+Unrecognised values return `"Unknown"`. Defined in `event.go:25-50`.
+
 ## Event struct
 
 ```go
@@ -59,10 +62,25 @@ type Event struct {
 | `SlotAcquired` | `current_count`, `max_parallel` |
 | `SlotReleased` | `current_count`, `max_parallel` |
 
+## Bus struct
+
+```go
+type Bus struct {
+    mu          sync.RWMutex
+    subs        []*subscriber
+    chanBufSize int   // configurable; NewBus() sets to 64
+    closed      bool
+}
+```
+
+`chanBufSize` controls the buffer capacity of channels created by `Subscribe`.
+It is set to `defaultChanBufSize` (64) by `NewBus()` and is not exported, so it
+can only be changed by constructing a `Bus` struct directly in tests.
+
 ## Bus API
 
-`NewBus() *Bus` - creates a ready bus with a subscriber channel buffer of 64
-events (`defaultChanBufSize`).
+`NewBus() *Bus` - creates a ready bus with `chanBufSize` set to
+`defaultChanBufSize` (64).
 
 `Bus.Subscribe(filter ...EventType) <-chan Event` - returns a buffered
 channel. An empty filter receives all event types. Slow subscribers whose

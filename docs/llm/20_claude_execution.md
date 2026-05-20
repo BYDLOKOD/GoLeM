@@ -34,9 +34,11 @@ ANTHROPIC_DEFAULT_SONNET_MODEL  = cfg.SonnetModel
 ANTHROPIC_DEFAULT_HAIKU_MODEL   = cfg.HaikuModel
 ```
 
-The stripping of `ANTHROPIC_AUTH_TOKEN` etc. prevents the parent process's
-Anthropic credentials from leaking into the subprocess when `glm` is itself
-running inside a Claude Code session.
+In addition to the nesting-detection variables and Anthropic credentials,
+`API_TIMEOUT_MS` is also stripped (blocked map in `claude.go:51-60`). This
+prevents the parent process's Anthropic credentials and timeout configuration
+from leaking into the subprocess when `glm` is itself running inside a Claude
+Code session.
 
 ## Flag construction (`BuildFlags`)
 
@@ -59,23 +61,25 @@ Signature: `Execute(parent context.Context, cfg Config) (int, error)`
 
 Steps:
 
-1. `exec.LookPath("claude")` - returns `(127, err:dependency)` if not found.
-2. `os.Stat(cfg.WorkDir)` - returns `(1, err:user)` if missing.
-3. Writes pre-execution metadata files to `cfg.JobDir`:
+1. If `parent == nil`, replaces it with `context.Background()` so the contract
+   remains safe (`claude.go:135-137`).
+2. `exec.LookPath("claude")` - returns `(127, err:dependency)` if not found.
+3. `os.Stat(cfg.WorkDir)` - returns `(1, err:user)` if missing.
+4. Writes pre-execution metadata files to `cfg.JobDir`:
    `prompt.txt`, `workdir.txt`, `permission_mode.txt`, `model.txt`,
    `started_at.txt`.
-4. Creates a `context.WithTimeout` derived from `parent` using
+5. Creates a `context.WithTimeout` derived from `parent` using
    `cfg.TimeoutSecs` (default 600 s when <= 0).
-5. Runs `claude <flags> <prompt>` with `Setpgid: true` so the whole process
+6. Runs `claude <flags> <prompt>` with `Setpgid: true` so the whole process
    group can be killed.
-6. Waits on a goroutine or context cancellation.
-7. On timeout: `syscall.Kill(-pid, SIGKILL)` then waits for exit.
-8. Writes `finished_at.txt`, `raw.json` (stdout), `stderr.txt`.
-9. Determines exit code: context expiry -> 124; `ExitError` -> process code;
-   signal -> 128 + signal number; other -> 1.
-10. Publishes `event.JobRunning` before start, then `JobDone`/`JobFailed`/
+7. Waits on a goroutine or context cancellation.
+8. On timeout: `syscall.Kill(-pid, SIGKILL)` then waits for exit.
+9. Writes `finished_at.txt`, `raw.json` (stdout), `stderr.txt`.
+10. Determines exit code: context expiry -> 124; `ExitError` -> process code;
+    signal -> 128 + signal number; other -> 1.
+11. Publishes `event.JobRunning` before start, then `JobDone`/`JobFailed`/
     `JobTimeout` after completion.
-11. Writes `exit_code.txt` only when exit code != 0.
+12. Writes `exit_code.txt` only when exit code != 0.
 
 ## Output parsing (`ParseRawJSON`)
 
@@ -136,3 +140,15 @@ Converts exit code + stderr text to a job status string:
 
 Permission keywords (case-insensitive): `permission`, `not allowed`, `denied`,
 `unauthorized`.
+
+## Metadata helpers
+
+Three exported helpers write individual metadata files to the job directory.
+They are used by the chain/pipeline machinery that needs finer-grained control
+than the monolithic `Execute` function.
+
+| Function | Signature | Behaviour |
+|----------|-----------|-----------|
+| `WriteMetadata` | `(cfg Config)` | Writes `prompt.txt`, `workdir.txt`, `permission_mode.txt`, `model.txt`, `started_at.txt` to `cfg.JobDir`. No-op on error (ignores return value of `os.WriteFile`). `claude.go:293` |
+| `WriteFinishedAt` | `(jobDir string)` | Writes current UTC time in RFC3339 to `finished_at.txt`. No-op on error. `claude.go:309` |
+| `WriteExitCode` | `(jobDir string, code int)` | Writes decimal exit code to `exit_code.txt`. No-op when `code == 0` (success does not produce a file). No-op on write error. `claude.go:316` |

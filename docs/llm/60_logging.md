@@ -80,6 +80,22 @@ const (
 )
 ```
 
+### Error struct and constructors
+
+```go
+type Error struct {
+    Category   Category
+    Message    string
+    Suggestion string // optional; appended after ". " when non-empty
+}
+```
+
+`NewError(category Category, message string) *Error` -- constructs an `Error`
+without a suggestion (`exitcode.go:47`).
+
+`NewErrorWithSuggestion(category Category, message, suggestion string) *Error` --
+constructs an `Error` with a suggestion (`exitcode.go:52`).
+
 `exitcode.Error` implements `error`. Its `Error()` method returns
 `"err:<category> <message>"`, optionally appended with `". <suggestion>"`.
 

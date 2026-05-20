@@ -30,9 +30,9 @@ hand-written.
 | `chain` | `cmdChain` | Sequential multi-prompt execution. |
 | `pipeline FILE` | `cmdPipeline` | Execute a DAG from a JSON file. |
 | `session` | `cmdSession` | Interactive Claude session (exec-replaces the process). |
-| `doctor` | `cmdDoctor` | System health check. |
+| `doctor` | `cmdDoctor` | System health check (7 checks: `claude_cli`, `api_key`, `zai_reachable`, `models`, `slots`, `platform`, `proxy`). |
 | `update` | `cmdUpdate` | Self-update from GitHub. |
-| `config show\|set` | `cmdConfig` | Show or mutate a config key. |
+| `config show\|set` | `cmdConfig` | Show or mutate a config key. `config show` prints each key with a source annotation: `(default)`, `(config)`, or `(env)`. `config set KEY VALUE` validates KEY against `KnownConfigKeys` and writes to `glm.toml`. |
 | `mcp` | `cmdMCP` | Start MCP JSON-RPC server over stdio. |
 | `version\|--version\|-v` | - | Print `glm <version>` and exit 0. |
 | `help\|--help\|-h` | `usage()` | Print usage text and exit 0. |
@@ -68,11 +68,70 @@ args after all flags are joined and become the prompt.
 `chain` additionally accepts `--continue-on-error` (bool).
 
 `list` accepts `--status STATUS` (comma-separated) and `--since DURATION`
-(e.g. `1h`, `24h`).
+(e.g. `1h`, `24h`). In text mode, if the proxy is running, a header line
+is printed before the job list with proxy statistics fetched from
+`/health`: `active`, `queued`, `total`, `uptime` (`main.go:543-561`).
 
 `clean` accepts `--days N` (remove jobs older than N days).
 
 `pipeline` accepts `--system-prompt TEXT` and `--constraint KEY`.
+
+## `_proxy` flags
+
+The `_proxy` subcommand (internal, spawned by `ensureProxy`) accepts:
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--port N` | int | Proxy listen port (default from config). |
+| `--idle-timeout SEC` | int | Auto-shutdown after N seconds idle. |
+| `--target URL` | string | Upstream API base URL. |
+| `--config-dir DIR` | string | Directory for PID/port files. |
+| `--concurrency N` | int | **Deprecated.** Accepted and discarded for backward compatibility with running proxy daemons. |
+
+Parsed inline in `main.go:1047-1082`.
+
+## JSON output
+
+When `--json` is passed, commands emit structured JSON instead of human-readable
+text. The types are defined in `internal/cmd/json.go`.
+
+### `run --json` / `result --json`
+
+Emits a `JobResultJSON` object:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Job ID. |
+| `status` | string | Terminal status (`completed` / `failed`). |
+| `stdout` | string | Agent stdout. |
+| `stderr` | string | Agent stderr (empty for successful jobs). |
+| `changelog` | string | File changes summary. |
+| `duration_seconds` | int | Wall-clock duration in seconds. |
+| `exit_code` | *int | Subprocess exit code; omitted when not recorded. |
+
+Populated by `cmd.ResultJSON` (`json.go:285-318`). In `cmdRun`, JSON mode is
+selected by `hasFlag(args, "--json")` at `main.go:299-300`.
+
+### `log --json`
+
+Emits a `JobLogJSON` object:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Job ID. |
+| `changes` | []string | Changelog split into lines. Empty array if no changes. |
+
+Populated by `cmd.LogJSON` (`json.go:321-345`).
+
+### `status --json`
+
+Emits a `JobStatusJSON` object (`json.go:26-31`): `id`, `status`, `pid`,
+`started_at`.
+
+### `list --json`
+
+Emits a JSON array of `JobListItem` objects (`json.go:18-23`): `id`, `status`,
+`started_at`, `project_id`. Empty result outputs `[]` (never `null`).
 
 ## Execution flow for `run`
 
@@ -95,6 +154,34 @@ stderr output.
 
 `session` calls `cmd.SessionCmd` to build argv, then `syscall.Exec` to
 replace the current process with `claude` (no job directory is created).
+
+### `doctor` checks
+
+`DoctorCmd` (`internal/cmd/doctor.go:82-101`) runs 7 diagnostic checks:
+
+1. **claude_cli** -- `claude` binary found in PATH and version queried.
+2. **api_key** -- API key file exists and is non-empty.
+3. **zai_reachable** -- HEAD request to `ZaiBaseURL` succeeds within timeout.
+4. **models** -- Reports configured opus/sonnet/haiku model names.
+5. **slots** -- Counts running jobs under `SubagentDir`.
+6. **platform** -- `GOOS/GOARCH`.
+7. **proxy** -- Checks if proxy daemon is alive and queries `/health` for stats.
+
+Each check outputs `OK`, `FAIL`, or `WARN` with a detail line. Doctor always
+exits 0 (check failures are reported, not fatal).
+
+### `config show|set`
+
+`config show` prints each configuration key with its current value and a source
+annotation (`doctor.go:339-434`):
+- `(default)` -- hardcoded default.
+- `(config)` -- value from `glm.toml`.
+- `(env)` -- value from an environment variable (overrides TOML).
+
+`config set KEY VALUE` validates the key against `KnownConfigKeys` and the
+value against per-key rules, then writes the key into `glm.toml`
+(`doctor.go:456-525`). Accepted keys: `model`, `opus_model`, `sonnet_model`,
+`haiku_model`, `permission_mode`, `debug`. Invalid keys produce `err:user`.
 
 ## Exit codes
 

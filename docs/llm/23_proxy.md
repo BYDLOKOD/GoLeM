@@ -46,6 +46,13 @@ process group), polls at 100 ms intervals for 3 s, then sends SIGKILL.
 (`localhost:<port>`), registers routes, and blocks on `http.Serve`. Returns
 `(net.Addr, error)` - the listener address is available to the caller.
 
+`Port()` returns the actual TCP port the proxy is listening on (extracted from
+the listener address). Returns 0 if the listener is nil or not a TCP address
+(`proxy.go:161`).
+
+`Stop()` closes the listener (causing `Start` to return) and stops the idle
+timer (`proxy.go:176`).
+
 Two routes:
 - `GET /health` - JSON health document.
 - `ALL /` - `proxyHandler` (gated by semaphore).
@@ -59,6 +66,13 @@ For each request, `proxyHandler`:
    `defaultCap == 0`).
 3. Acquires the model's semaphore channel.
 4. Forwards via `httputil.ReverseProxy`.
+
+The `X-Model` header is set on the request (`proxy.go:312`) so that the
+reverse proxy's `Director`, `ModifyResponse`, and `ErrorHandler` can use it
+for logging without re-parsing the body.
+
+`ErrModelNotFound` is a sentinel error returned when the `model` field is
+absent from the request body (`proxy.go:58`).
 
 ### Global semaphore mode (fallback, `cfg.Models` empty)
 
@@ -87,6 +101,28 @@ is called, causing `http.Serve` to return and the daemon to exit.
 `joinPaths(base, suffix)` ensures exactly one `/` between the target base
 path and the incoming request path, preventing double-slash URLs. This was a
 bug fix in an earlier commit.
+
+### Internal components
+
+`buildReverseProxy()` (`proxy.go:526`) constructs an `httputil.ReverseProxy`
+with a custom `http.Transport` tuned for API proxying:
+
+- 30 s connect timeout, 30 s keep-alive.
+- 10 s TLS handshake timeout.
+- 5 min response header timeout (long-running LLM responses).
+- 100 max idle connections, 90 s idle connection timeout.
+
+Three hooks are installed on the reverse proxy:
+
+- `Director` - rewrites scheme/host/path, removes `X-Forwarded-For`.
+- `ModifyResponse` (`proxy.go:557`) - logs upstream responses with status >= 400,
+  including the body and the `X-Model` header.
+- `ErrorHandler` (`proxy.go:568`) - returns 504 (Gateway Timeout) when the error
+  is a `*url.Error` with `Timeout() == true`, 502 (Bad Gateway) otherwise.
+
+`modelStat` (`proxy.go:51-55`) tracks per-model statistics with atomic counters:
+`total` (requests seen), `active` (currently in-flight), `errors` (status >= 400).
+Stored in a `sync.Map` on the `Proxy` struct, keyed by model name.
 
 ## Health endpoint
 
@@ -123,6 +159,9 @@ In global semaphore mode, `"queued": 0` replaces the `"models"` key.
 ## Retry package (`internal/retry/retry.go`)
 
 `retry.Do(ctx, op, opts...)` - calls `op` up to `maxAttempts` times.
+
+Default `maxAttempts` is `defaultMaxAttempts = 3` (`retry.go:28`). This is the
+total number of calls (initial attempt + 2 retries).
 
 Backoff formula: `delay = min(baseDelay * 2^attempt, maxDelay) + jitter`
 where jitter is uniformly random in `[0, defaultJitter)` (500 ms default).

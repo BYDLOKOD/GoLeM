@@ -124,16 +124,16 @@ Constraint vocabulary:
 Step outputs can be validated by `internal/validation/` before the chain advances.
 
 - Expressions: `contains:<text>`, `not_contains:<text>`, `matches:<regexp>`
-- `dag.Step.Validate` — list of expressions checked against step stdout
-- `dag.Step.Retry` / `dag.RetryConfig` — `MaxAttempts` and optional `Feedback` prompt injected on failure
-- Gate steps (`type: "gate"`) validate without invoking Claude — zero-cost checks in pipelines
+- `dag.Step.Validate` - list of expressions checked against step stdout
+- `dag.Step.Retry` / `dag.RetryConfig` - `MaxAttempts` and optional `Feedback` prompt injected on failure
+- Gate steps (`type: "gate"`) validate without invoking Claude - zero-cost checks in pipelines
 - MCP types mirror the same fields: `ChainInputStep.Validate`, `ChainInputStep.Retry`
 
 ### Configuration
 
 - Config file: `~/.config/GoLeM/glm.toml` (TOML format, env var overrides supported)
 - API key: `~/.config/GoLeM/zai_api_key`
-- `system_prompt` — default system prompt prepended to every job (optional)
+- `system_prompt` - default system prompt prepended to every job (optional)
 
 ## Roadmap
 
@@ -152,3 +152,7 @@ Key phases:
 - Keep CLI working alongside any new interfaces (backward compatibility).
 - MCP server is the highest priority improvement.
 - All new packages follow existing patterns: `internal/`, own `_test.go` files, no mocks.
+
+## Further documentation
+
+See `docs/llm/00_index.md` for per-package specs (one file per domain, with code references).

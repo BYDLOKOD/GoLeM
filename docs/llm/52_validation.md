@@ -56,14 +56,14 @@ func (e *ValidationError) Error() string {
 }
 ```
 
-`dag/executor.go` uses `errors.As(err, &ve)` to distinguish validation
-failures from other errors - only validation errors trigger step retry in
-`retryExecute`.
+`dag/executor.go` uses the `isValidationError(err) bool` helper (which wraps
+`errors.As(err, &ve)`) to distinguish validation failures from other errors -
+only validation errors trigger step retry in `retryExecute`.
 
 ## Usage locations
 
 | Call site | What is validated |
 |-----------|------------------|
-| `dag.ClaudeStepExecutor.applyValidation` | Step stdout after claude completes. |
+| `dag.applyValidation` (package-level, `executor.go`) | Step stdout after claude completes. |
 | `dag.ClaudeStepExecutor.executeGate` | Combined content of all dependency artifacts. |
 | `cmd.ChainCmd` (via `glm_chain` steps field) | Each chain step output when `ChainInputStep.Validate` is set. |

@@ -57,7 +57,7 @@ When `maxParallel > 0`: loops:
 2. If no slot: waits via `SlotNotifier.Wait(ctx)` with a 30 s timeout,
    then retries.
 
-The 30 s timeout is currently hardcoded (noted as TODO in `slot.go:317`).
+The 30 s timeout is currently hardcoded (noted as TODO in `slot.go:316`).
 
 ## SlotNotifier (Unix socket wakeup)
 
@@ -101,7 +101,8 @@ Both are no-ops when `bus` is nil.
 
 `IsProcessAlive(pid)` sends `signal 0` to the process. Returns true if the
 process exists and is not in zombie state (`/proc/<pid>/stat` state field
-`Z`). EPERM (process exists, no permission to signal) is treated as alive.
+`Z`). EPERM also triggers a zombie check via `/proc/<pid>/stat` - a zombie
+with EPERM returns false.
 
 `TerminateProcessGroup(pid)` sends SIGTERM to `-pid` (process group), waits
 1 s, then sends SIGKILL.

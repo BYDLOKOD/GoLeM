@@ -82,12 +82,16 @@ args after all flags are joined and become the prompt.
 4. `config.DefaultTimeout` applied if timeout is 0.
 5. `cmd.Validate` checks prompt non-empty, dir exists, timeout > 0.
 6. `job.Reconcile` cleans stale jobs at startup.
-7. `slot.NewSlotManager(dir, 0).WaitForSlot()` claims a concurrency slot.
+7. `slot.NewSlotManager(dir, 0)`, then `sm.Init()`, then `sm.WaitForSlot()`
+   initializes the counter file and claims a concurrency slot.
 8. `cmd.ExecuteJob` runs the claude subprocess and releases the slot on return.
 9. Stdout/changelog/stderr printed to respective streams.
 
-`start` follows the same path but prints the job ID before launching a
-goroutine, then waits on a done channel or signal.
+`start` creates the job directory via `job.NewJob`, writes `pid.txt`, prints
+the job ID, then launches a goroutine. Inside the goroutine: `job.Reconcile`,
+`sm.Init()`, `sm.WaitForSlot()`, `cmd.ExecuteJob` (no `cmd.Validate` call).
+Panics inside the goroutine are recovered and written as `failed` status with
+stderr output.
 
 `session` calls `cmd.SessionCmd` to build argv, then `syscall.Exec` to
 replace the current process with `claude` (no job directory is created).
@@ -110,4 +114,5 @@ right code; everything else returns 1.
 
 `initLogger()` reads `GLM_DEBUG=1` (enables debug level), `GLM_LOG_FORMAT=json`
 (switches to JSON), and `GLM_LOG_FILE=<path>` (appends to a file) before
-any command logic runs. The logger is package-level (`var logger *log.Logger`).
+any command logic runs. Also detects TTY via `os.Stderr.Stat()` to enable
+ANSI colors. The logger is package-level (`var logger *log.Logger`).

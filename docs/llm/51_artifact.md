@@ -69,7 +69,8 @@ be non-empty; returns `err:validation` otherwise.
 `artifact.NewText(step.ID, stdout)` and returns it as a single-element
 slice. The scheduler passes these artifacts as `inputs` to dependent steps.
 `buildInjectedPrompt` in `dag/executor.go` renders each input artifact's
-`Content` as a quoted block preceding the step's own prompt.
+`Content` prefixed with `Previous agent result (from step <stepID>):`, then
+`Your task:` and the step's own prompt.
 
 Artifacts are not currently persisted to disk during normal pipeline
 execution - they exist only in memory and are passed directly through the

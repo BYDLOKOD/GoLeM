@@ -37,12 +37,14 @@ share one proxy instance via PID/port files in `configDir`.
 `WritePIDFile` / `CleanPIDFile` manage `proxy.pid` and `proxy.port` via
 atomic write. The proxy calls these at startup and shutdown.
 
-`Stop(configDir)` sends SIGTERM, polls 3 s, then SIGKILL.
+`Stop(configDir)` sends SIGTERM to the proxy process (single process, not
+process group), polls at 100 ms intervals for 3 s, then sends SIGKILL.
 
 ## Proxy server (`internal/proxy/proxy.go`)
 
 `proxy.New(cfg)` creates a `Proxy`. `proxy.Start()` binds a TCP listener
-(`localhost:<port>`), registers routes, and blocks on `http.Serve`.
+(`localhost:<port>`), registers routes, and blocks on `http.Serve`. Returns
+`(net.Addr, error)` - the listener address is available to the caller.
 
 Two routes:
 - `GET /health` - JSON health document.

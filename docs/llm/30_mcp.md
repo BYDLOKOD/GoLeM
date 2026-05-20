@@ -106,12 +106,12 @@ srv.RegisterTool(mcp.ToolDefinition{
 }, tools.RunHandler(tc))
 ```
 
-`ToolContext` carries `Cfg`, `SubagentsRoot`, and `ProjectID` (empty string
-at MCP startup - project ID is resolved per-call from the `dir` input field).
+`ToolContext` carries `Cfg`, `SubagentsRoot`, and `ProjectID`. When created
+with an empty string, `NewToolContext` defaults `ProjectID` to `"mcp"`.
 
 ## Known gap
 
 Event bus is created in `cmdMCP` but not connected to the MCP transport for
 progress notifications. There is a `// TODO` comment at
-`cmd/glm/main.go:1182`. `glm_start` jobs do not emit JSON-RPC notifications
+`cmd/glm/main.go:1181`. `glm_start` jobs do not emit JSON-RPC notifications
 when they transition to `running` or `done`.

@@ -33,8 +33,8 @@ const (
 )
 ```
 
-`JobProgress` and `ToolUse` are defined but not currently emitted by any
-producer.
+`JobProgress`, `ToolUse`, and `JobKilled` are defined but not currently emitted
+by any producer.
 
 ## Event struct
 
@@ -90,4 +90,4 @@ producers. Equivalent to `bus.Publish(e)` with a nil guard.
 | `slot.SlotManager.ReleaseSlot` | `SlotReleased` |
 
 No consumers are wired in the current CLI path. The MCP server has a
-`// TODO` to connect the bus for progress notifications (`cmd/glm/main.go:1182`).
+`// TODO` to connect the bus for progress notifications (`cmd/glm/main.go:1181`).

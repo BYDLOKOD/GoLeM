@@ -10,8 +10,9 @@ See also: [31_mcp_tools.md](31_mcp_tools.md) · [51_artifact.md](51_artifact.md)
 
 ## Pipeline file format
 
-`glm pipeline FILE` loads a `.json` file. Only `.json` extension is supported
-(`loadDAGFromJSON`). The top-level structure:
+`glm pipeline FILE` loads a `.json` file. Only `.json` extension is supported.
+The exported function is `dag.LoadDAGFromFile(path)` which internally calls
+the private `loadDAGFromJSON`. The top-level structure:
 
 ```json
 {
@@ -44,6 +45,7 @@ All fields except `id` and `prompt` are optional.
 | `type` | string | `"gate"` for gate steps; empty for normal steps. |
 | `validate` | object | `ValidationRule` - checked against step stdout. |
 | `retry` | object | `RetryConfig{max_attempts, feedback}` - retry on validation failure. |
+| `condition` | string | Reserved for conditional execution (not yet evaluated). |
 
 ## Validation (`DAG.Validate`)
 
@@ -62,6 +64,13 @@ call. `TopologicalSort()` returns the cache or calls `Validate` if empty.
 Error format: `err:dag <description>`.
 
 ## Scheduler (`dag/scheduler.go`)
+
+The `StepExecutor` interface (`scheduler.go`):
+```go
+type StepExecutor interface {
+    Execute(ctx context.Context, step Step, inputs []*artifact.Artifact) ([]*artifact.Artifact, error)
+}
+```
 
 `NewScheduler(executor StepExecutor, maxConcurrent int)` - `maxConcurrent == 0`
 means unlimited; negative values are clamped to 1.
@@ -111,8 +120,8 @@ For each non-gate step:
 3. Calls `claude.Execute(ctx, claudeCfg)`.
 4. Calls `claude.ParseRawJSON(jobDir)` to extract stdout.
 5. If `exitCode != 0`: returns error, preserves job directory for debugging.
-6. If `step.Validate != nil`: calls `applyValidation`; on failure, preserves
-   job directory.
+6. If `step.Validate != nil`: calls package-level `applyValidation`; on failure,
+   preserves job directory.
 7. On success: removes job directory, wraps stdout in `artifact.NewText`.
 
 Retry within `ClaudeStepExecutor` (via `retryExecute`): only validation

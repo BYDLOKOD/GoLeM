@@ -33,8 +33,9 @@ Jobs live under `~/.claude/subagents/<project-id>/<job-id>/`.
       created_at.txt      # RFC3339 UTC timestamp (for stale queue detection)
 ```
 
-The `created_at.txt` file is written by reconciliation helpers and is used to
-detect jobs stuck in `queued` state for more than 5 minutes.
+The `created_at.txt` file is read by `IsStaleQueued` (reconciliation) to
+detect jobs stuck in `queued` state for more than 5 minutes. It is written
+externally (not by the `internal/job` package itself).
 
 ## Project ID
 

@@ -44,7 +44,7 @@ Prefixes and colors: `[+]` green (info), `[!]` yellow (warn), `[x]` red
 | `WithFormat(f)` | `FormatHuman` or `FormatJSON`. |
 | `WithWriter(w)` | Primary output writer (default `os.Stderr`). |
 | `WithIsTTY(b)` | Enable ANSI color in human format. |
-| `WithFile(w)` | Additional file writer (append). Opened from `GLM_LOG_FILE`. |
+| `WithFile(w)` | Additional file writer (append). Caller opens the file from `GLM_LOG_FILE`. |
 
 All writes are mutex-protected. File write failure prints `[!] Cannot write
 to log file` to the primary writer and continues.
@@ -102,5 +102,6 @@ string:
 ### Permission error detection
 
 `exitcode.IsPermissionError(stderr string) bool` checks (case-insensitive)
-for: `permission`, `not allowed`, `denied`, `unauthorized`. Used by
-`claude.MapStatus` to classify subprocess failures as `permission_error`.
+for: `permission`, `not allowed`, `denied`, `unauthorized`. Note: `claude.MapStatus`
+uses its own local `isPermissionError` with the same logic rather than calling
+this function.

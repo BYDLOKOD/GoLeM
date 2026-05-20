@@ -33,7 +33,8 @@ Executes a subagent synchronously. Mirrors `cmdRun`:
 2. Applies defaults: `dir="."`, `model`, `permissionMode`, `timeout`,
    `systemPrompt` from config.
 3. `cmd.Validate(flags)`.
-4. `job.Reconcile` + `slot.NewSlotManager(0).WaitForSlot()`.
+4. `job.Reconcile` + `slot.NewSlotManager(h.tc.SubagentsRoot, 0)` then
+   `Init()` + `WaitForSlot()`.
 5. `cmd.ExecuteJob(ctx, ...)` with `AutoDelete: true`.
 6. Returns `RunOutput{stdout, stderr, exit_code, job_id}`.
 
@@ -53,8 +54,8 @@ Input fields: same as `glm_run`.
 
 Handler: `StatusTool.Handle` (`tools/status.go`).
 
-Reads the `status` file for a job. Uses `job.FindJobDir` with an empty
-`projectID` (scans all projects). Returns `StatusOutput{status}`.
+Reads the `status` file for a job. Uses `job.FindJobDir` with `"mcp"` as
+`projectID` (the `NewToolContext` default). Returns `StatusOutput{status}`.
 
 Input fields: `job_id` (required).
 
@@ -63,9 +64,8 @@ Input fields: `job_id` (required).
 Handler: `ResultTool.Handle` (`tools/result.go`).
 
 Retrieves the output of a completed job. Reads `stdout.txt`, `stderr.txt`,
-`exit_code.txt`. Optionally deletes the job directory when `Deleted: true`
-(current implementation always returns `Deleted: false`; deletion logic is
-not present in the tool handler).
+`exit_code.txt`. Deletes the job directory after reading and returns
+`Deleted: true`.
 
 Returns `ResultOutput{stdout, stderr, exit_code, deleted}`.
 
@@ -85,8 +85,9 @@ Input fields: `status` (optional), `since` (optional RFC3339 timestamp).
 
 Handler: `KillTool.Handle` (`tools/kill.go`).
 
-Terminates a running job. Reads `pid.txt`, sends SIGTERM then SIGKILL via
-`TerminateProcessGroup`, transitions status to `killed`.
+Terminates a running job. Reads `pid.txt`, then calls `cmd.KillCmd` which
+uses an injected `productionSignalFn` (wraps `syscall.Kill`) to send SIGTERM
+then SIGKILL, and transitions status to `killed`.
 
 Returns `KillOutput{job_id, previous_status}`.
 
@@ -113,6 +114,10 @@ Input fields: `prompts` or `steps` (at least one required), `dir`, `timeout`,
 
 Handler: `PipelineHandler.Handle` (`tools/pipeline.go`).
 
+`PipelineHandler` is created via `NewPipelineHandler(cfg, nil, 0)` and stores
+`*config.Config`, a `dag.StepExecutor`, and `maxConcurrency int` directly
+(unlike other handlers that use `ToolContext`).
+
 Accepts an inline DAG definition (not a file path) and executes it via the
 `dag.Scheduler`. The DAG is validated with `dag.Validate()` before execution.
 
@@ -128,8 +133,12 @@ The `dag` object follows the same schema as the JSON pipeline file (see
 [40_dag.md](40_dag.md)): `{"steps": [{id, prompt, depends_on, model,
 timeout, type, validate, retry}]}`.
 
-## Input/output type reference (`tools/types.go`)
+## Input/output type reference
 
-All input and output structs are defined in `internal/mcp/tools/types.go`.
-`ChainInputStep` embeds `*validation.ValidationRule` and `*dag.RetryConfig`
-for step-level validation and retry in the chain tool.
+Input and output structs are defined in `internal/mcp/tools/types.go`. The
+pipeline structs (`PipelineInput`, `PipelineOutput`, `StepResult`) are defined
+in `internal/mcp/tools/pipeline.go`.
+
+`ChainInputStep` has named pointer fields `Validate *validation.ValidationRule`
+and `Retry *dag.RetryConfig` for step-level validation and retry in the chain
+tool.

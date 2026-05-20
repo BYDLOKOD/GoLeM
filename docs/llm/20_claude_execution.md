@@ -104,7 +104,8 @@ structure is:
 4. Calls `GenerateChangelog(jobDir, toolUses)`.
 
 On malformed JSON: writes empty `stdout.txt`, calls `GenerateChangelog` with
-nil, logs a warning to stderr. Does not return an error to callers.
+nil, logs a warning to stderr, and returns the error from `GenerateChangelog`.
+For read/write failures, returns the underlying OS error directly.
 
 ## Changelog generation (`GenerateChangelog`)
 

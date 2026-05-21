@@ -5,11 +5,14 @@ _glm() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="session run start status result log list clean kill chain update doctor config _install _uninstall version help"
-    local flags="-d -t -m --model --opus --sonnet --haiku --unsafe --mode --json"
-    local config_keys="model opus_model sonnet_model haiku_model permission_mode api_rps debug"
-    local status_values="queued running done failed cancelled permission_error"
-    local modes="bypassPermissions acceptEdits plan"
+    local commands="session run start status result log list clean kill chain pipeline update doctor config mcp _install _uninstall version help"
+    local flags="-d -t -m --model --opus --sonnet --haiku --tier --unsafe --mode --system-prompt --constraint --json"
+    local config_keys="model opus_model sonnet_model haiku_model permission_mode debug proxy_enabled proxy_port proxy_idle_timeout effort exclude_dynamic_sections system_prompt"
+    local status_values="queued running done failed timeout killed permission_error"
+    local modes="bypassPermissions acceptEdits default plan"
+    local tiers="light medium heavy auto"
+    local constraint_keys="readonly no-create plan-first scope:"
+    local models="glm-5.1 glm-5 glm-4"
 
     # Determine command position
     local cmd=""
@@ -34,18 +37,40 @@ _glm() {
                     return
                     ;;
                 -m|--model|--opus|--sonnet|--haiku)
-                    COMPREPLY=($(compgen -W "glm-5 glm-4 glm-4-flash" -- "$cur"))
+                    COMPREPLY=($(compgen -W "$models" -- "$cur"))
                     return
                     ;;
                 --mode)
                     COMPREPLY=($(compgen -W "$modes" -- "$cur"))
                     return
                     ;;
+                --tier)
+                    COMPREPLY=($(compgen -W "$tiers" -- "$cur"))
+                    return
+                    ;;
+                --constraint)
+                    COMPREPLY=($(compgen -W "$constraint_keys" -- "$cur"))
+                    return
+                    ;;
+                --system-prompt)
+                    return
+                    ;;
             esac
             if [[ $cur == -* ]]; then
-                COMPREPLY=($(compgen -W "$flags" -- "$cur"))
+                local local_flags="$flags"
+                if [[ "$cmd" == "chain" ]]; then
+                    local_flags="$flags --continue-on-error"
+                fi
+                COMPREPLY=($(compgen -W "$local_flags" -- "$cur"))
                 return
             fi
+            ;;
+        pipeline)
+            # First positional is a JSON file
+            if [[ $cur != -* ]]; then
+                _filedir json
+            fi
+            return
             ;;
         status|result|log|kill)
             # These take a JOB_ID

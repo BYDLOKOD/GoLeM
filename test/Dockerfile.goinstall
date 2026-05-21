@@ -1,0 +1,21 @@
+# Verifies `go install github.com/veschin/GoLeM/cmd/glm@latest` end-to-end:
+# no source tree mounted, the binary is fetched from the Go module proxy
+# (which resolves through GitHub's permanent redirect veschin -> BYDLOKOD)
+# and the resulting glm is exercised against the real Z.AI account.
+FROM golang:alpine
+
+RUN apk add --no-cache bash nodejs npm git ca-certificates curl
+RUN npm install -g @anthropic-ai/claude-code
+
+RUN adduser -D -u 1000 -s /bin/bash testuser
+USER testuser
+WORKDIR /home/testuser
+
+RUN mkdir -p /home/testuser/.config/GoLeM /home/testuser/.claude/subagents
+
+ENV PATH="/home/testuser/.local/bin:/home/testuser/go/bin:${PATH}"
+
+COPY --chown=testuser:testuser test/goinstall-smoke.sh /home/testuser/goinstall-smoke.sh
+RUN chmod +x /home/testuser/goinstall-smoke.sh
+
+CMD ["bash", "/home/testuser/goinstall-smoke.sh"]

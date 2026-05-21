@@ -29,7 +29,7 @@ import (
 	"github.com/veschin/GoLeM/internal/slot"
 )
 
-const version = "2.0.0"
+const version = "1.2.0"
 
 // logger is the global structured logger, initialized in run().
 var logger *log.Logger

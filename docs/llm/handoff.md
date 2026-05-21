@@ -3,13 +3,13 @@ id: handoff
 kind: guide
 ---
 
-# Handoff - GoLeM v2.0.0 release
+# Handoff - GoLeM v1.2.0 release
 
 See also: [00_index.md](00_index.md).
 
 ## Current state
 
-Branch: `main`. Latest tag: `v2.0.0` (release prep round).
+Branch: `main`. Latest tag: `v1.2.0` (release prep round).
 
 All 17 packages pass `go test ./... -short`, `go test -race ./...`, and a
 Docker-based end-to-end smoke test (`test/Dockerfile.smoke` +
@@ -22,11 +22,11 @@ go test -race ./...                        # race detector
 bash test/docker-smoke.sh                  # in-container smoke (needs Docker)
 ```
 
-Binary version constant: `version = "2.0.0"` (`cmd/glm/main.go`).
+Binary version constant: `version = "1.2.0"` (`cmd/glm/main.go`).
 
 ## What was fixed in the release prep
 
-These bugs were caught during the v2.0.0 smoke pass and are now closed:
+These bugs were caught during the v1.2.0 smoke pass and are now closed:
 
 - `glm help` previously printed to stderr. It now prints to stdout when called
   as a command (`help`, `--help`, `-h`); stderr is used only when usage is
@@ -102,7 +102,7 @@ the MCP server over stdio, and finally exercises `glm _uninstall`.
   command. Wiring it would let users switch between multiple Anthropic-
   compatible API backends via config.
 - Provider/multi-backend coverage and Windows support are out of scope for
-  v2.0.0.
+  v1.2.0.
 
 ## Agent error to log
 

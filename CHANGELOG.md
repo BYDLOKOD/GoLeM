@@ -1,6 +1,6 @@
 # Changelog
 
-## v2.0.0 - 2026-05-21
+## v1.2.0 - 2026-05-21
 
 Major release. All new subsystems land together - MCP, DAG pipelines, smart
 routing, system prompts/constraints, event bus, typed artifacts, retry,
@@ -80,7 +80,7 @@ of small but user-visible UX bugs.
 If you were on v1.x:
 
 - Run `glm _install` once after upgrading; it is idempotent and brings
-  the CLAUDE.md / settings.json injections in line with v2.0.0.
+  the CLAUDE.md / settings.json injections in line with v1.2.0.
 - If your `glm.toml` set `api_rps`, move the limit into a `[models]`
   section (e.g. `"glm-5.1" = 5`).
 - Default model is `glm-5.1` (unchanged since v1.1.x; if you pinned
@@ -88,4 +88,4 @@ If you were on v1.x:
 
 ## v1.1.x and earlier
 
-See the git log for the pre-v2.0.0 changelog.
+See the git log for the pre-v1.2.0 changelog.

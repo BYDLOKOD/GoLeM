@@ -1,0 +1,40 @@
+# End-to-end smoke test image for GoLeM.
+# Simulates a fresh Linux install: build glm from source, install claude CLI via npm,
+# run the smoke script inside an isolated user account.
+#
+# Build:
+#   docker build -f test/Dockerfile.smoke -t golem-smoke:test .
+#
+# Run (mount a real Z.AI key for Z.AI checks):
+#   docker run --rm -v "$HOME/.config/GoLeM/zai_api_key:/home/testuser/.config/GoLeM/zai_api_key:ro" golem-smoke:test
+
+FROM golang:alpine
+
+# System deps: Node.js + npm for claude CLI, bash for the test script, git/curl for general use.
+RUN apk add --no-cache bash nodejs npm git ca-certificates curl
+
+# claude CLI from Anthropic
+RUN npm install -g @anthropic-ai/claude-code
+
+# Non-root test user
+RUN adduser -D -u 1000 -s /bin/bash testuser
+USER testuser
+WORKDIR /home/testuser
+
+# Pre-create config / claude dirs so bind-mounts inherit the right owner
+RUN mkdir -p /home/testuser/.config/GoLeM /home/testuser/.claude/subagents
+
+# Copy current source tree so we test the local HEAD, not @latest
+COPY --chown=testuser:testuser . /home/testuser/golem-src
+
+# Build glm into ~/.local/bin
+RUN mkdir -p /home/testuser/.local/bin && \
+    cd golem-src && \
+    go build -o /home/testuser/.local/bin/glm ./cmd/glm/
+
+ENV PATH="/home/testuser/.local/bin:/home/testuser/go/bin:${PATH}"
+
+# Sanity check during build
+RUN go version && claude --version && glm version
+
+CMD ["bash", "/home/testuser/golem-src/test/docker-smoke.sh"]

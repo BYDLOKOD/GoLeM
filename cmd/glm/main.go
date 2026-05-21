@@ -1,10 +1,11 @@
-// Binary glm — GoLeM CLI tool for spawning parallel Claude Code subagents.
+// Binary glm - GoLeM CLI tool for spawning parallel Claude Code subagents.
 package main
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -69,7 +70,7 @@ func run(args []string) int {
 	logger = initLogger()
 
 	if len(args) == 0 {
-		usage()
+		usage(os.Stderr)
 		return 1
 	}
 
@@ -119,17 +120,17 @@ func run(args []string) int {
 		fmt.Println("glm " + version)
 		return 0
 	case "help", "--help", "-h":
-		usage()
+		usage(os.Stdout)
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", subcmd)
-		usage()
+		usage(os.Stderr)
 		return 1
 	}
 }
 
-func usage() {
-	fmt.Fprint(os.Stderr, `Usage: glm {session|run|start|status|result|log|list|clean|kill|chain|pipeline|update|doctor|config|mcp} [options]
+func usage(w io.Writer) {
+	fmt.Fprint(w, `Usage: glm {session|run|start|status|result|log|list|clean|kill|chain|pipeline|update|doctor|config|mcp} [options]
 
 Commands:
   session [flags] [claude flags]     Interactive Claude Code
@@ -149,8 +150,8 @@ Commands:
   mcp                                MCP server (JSON-RPC over stdio)
 
 Flags:
-  -d DIR              Working directory
-  -t SEC              Timeout in seconds
+  -d, --dir DIR       Working directory
+  -t, --timeout SEC   Timeout in seconds
   -m, --model MODEL   Set all three model slots to MODEL
   --opus MODEL        Set opus model
   --sonnet MODEL      Set sonnet model
@@ -676,9 +677,12 @@ func cmdChain(args []string) int {
 // Flags (-d, -t, -m, etc.) and their values are skipped.
 func extractPrompts(args []string) []string {
 	flagsWithValue := map[string]bool{
-		"-d": true, "-t": true, "-m": true, "--model": true,
-		"--opus": true, "--sonnet": true, "--haiku": true, "--mode": true,
-		"--tier": true, "--system-prompt": true, "--constraint": true,
+		"-d": true, "--dir": true,
+		"-t": true, "--timeout": true,
+		"-m": true, "--model": true,
+		"--opus": true, "--sonnet": true, "--haiku": true,
+		"--mode": true, "--tier": true,
+		"--system-prompt": true, "--constraint": true,
 	}
 
 	var prompts []string
@@ -987,12 +991,12 @@ func cmdInstall() int {
 
 	// Determine clone directory. For source installs the binary lives inside
 	// the repo (e.g. ~/GoLeM/glm). For go-install the binary is in
-	// $GOPATH/bin and cloneDir will not contain .git — InstallCmd detects this.
+	// $GOPATH/bin and cloneDir will not contain .git - InstallCmd detects this.
 	execPath, _ := os.Executable()
 	realPath, _ := filepath.EvalSymlinks(execPath)
 	cloneDir := filepath.Dir(filepath.Dir(realPath))
 
-	// If cloneDir doesn't contain .git, it's a go-install — pass empty.
+	// If cloneDir doesn't contain .git, it's a go-install - pass empty.
 	if _, err := os.Stat(filepath.Join(cloneDir, ".git")); err != nil {
 		cloneDir = ""
 	}

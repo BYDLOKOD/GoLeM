@@ -36,16 +36,16 @@ func ParseFlags(args []string) (*Flags, error) {
 		arg := args[i]
 
 		switch arg {
-		case "-d":
+		case "-d", "--dir":
 			if i+1 >= len(args) {
-				return nil, fmt.Errorf(`err:user "Missing value for -d flag"`)
+				return nil, fmt.Errorf(`err:user "Missing value for %s flag"`, arg)
 			}
 			f.Dir = args[i+1]
 			i++
 
-		case "-t":
+		case "-t", "--timeout":
 			if i+1 >= len(args) {
-				return nil, fmt.Errorf(`err:user "Missing value for -t flag"`)
+				return nil, fmt.Errorf(`err:user "Missing value for %s flag"`, arg)
 			}
 			val := args[i+1]
 			timeout, err := strconv.Atoi(val)

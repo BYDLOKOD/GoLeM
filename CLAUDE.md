@@ -3,7 +3,7 @@
 GoLeM lets Claude Code (Opus) delegate work to GLM (Z.AI Chinese AI models) as subagents.
 Opus orchestrates, GLM models execute tasks via the `glm` CLI.
 
-- **Origin**: Forked from [github.com/veschin/GoLeM](https://github.com/veschin/GoLeM)
+- **Repo**: [github.com/veschin/GoLeM](https://github.com/veschin/GoLeM)
 - **Language**: Go, stdlib-only (zero external dependencies)
 - **Go version**: 1.25.7
 

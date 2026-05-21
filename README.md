@@ -384,19 +384,24 @@ opus_model = "glm-5.1"
 sonnet_model = "glm-5.1"
 haiku_model = "glm-5.1"
 permission_mode = "bypassPermissions"
-api_rps = 3
 proxy_enabled = true
 proxy_idle_timeout = 600
 proxy_port = 0
-effort = "max"
-exclude_dynamic_sections = true
+effort = ""
+exclude_dynamic_sections = false
 system_prompt = ""   # optional default system prompt injected into every invocation
 
 [routing]
 light = "glm-5.1"
 medium = "glm-5.1"
 heavy = "glm-5.1"
+
+[models]
+"glm-5.1" = 10   # per-model concurrency limit (0 = unlimited)
 ```
+
+The `api_rps` and `max_parallel` keys are silently accepted for backward
+compatibility but have no effect. Use the `[models]` section above.
 
 Priority: CLI flag > environment variable > glm.toml > hardcoded default.
 
@@ -421,8 +426,6 @@ glm config set debug true
 | `GLM_SONNET_MODEL` | `sonnet_model` |
 | `GLM_HAIKU_MODEL` | `haiku_model` |
 | `GLM_PERMISSION_MODE` | `permission_mode` |
-| `GLM_API_RPS` | `api_rps` |
-| `GLM_MAX_PARALLEL` | `api_rps` (legacy alias) |
 | `GLM_DEBUG` | debug logging |
 | `GLM_ROUTING_LIGHT` | `routing.light` |
 | `GLM_ROUTING_MEDIUM` | `routing.medium` |
@@ -560,7 +563,7 @@ glm pipeline /path/to/pipeline.json
 - **Flags before prompt** - prompt is positional and must come last
 - **Poll async jobs** - after `glm start`, check with `glm status` or `glm list`
 - **Use `--json` when parsing** - structured output for programmatic processing
-- **Rate limiting is automatic** - `api_rps` config controls concurrency, extra jobs queue
+- **Rate limiting is automatic** - per-model concurrency limits live in the `[models]` section of `glm.toml`; the proxy queues and retries on 429/5xx
 
 ### Error handling
 

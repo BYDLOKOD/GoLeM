@@ -17,7 +17,7 @@ const (
 	ZaiAPITimeoutMs         = "30000000"
 	DefaultTimeout          = 1800
 	DefaultModel            = "glm-5.1"
-	DefaultPermissionMode   = "bypassPermissions"
+	DefaultPermissionMode   = "acceptEdits"
 	DefaultProxyEnabled     = true
 	DefaultProxyIdleTimeout = 600 // seconds
 	DefaultProxyPort        = 0   // 0 = auto-select

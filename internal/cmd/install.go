@@ -176,12 +176,15 @@ func InstallCmd(opts InstallOptions) error {
 	// Step 2: Permission mode (only if glm.toml does not exist).
 	tomlPath := filepath.Join(opts.ConfigDir, "glm.toml")
 	if _, err := os.Stat(tomlPath); os.IsNotExist(err) {
-		permMode, err := p.prompt("Permission mode [bypassPermissions/acceptEdits] (default: bypassPermissions): ")
+		_, _ = fmt.Fprintln(out, "Permission mode controls how golems handle file edits and shell commands.")
+		_, _ = fmt.Fprintln(out, "  acceptEdits        - golem auto-applies edits, asks before destructive ops (recommended)")
+		_, _ = fmt.Fprintln(out, "  bypassPermissions  - golem acts without confirmation (full autonomy, use --unsafe per-call)")
+		permMode, err := p.prompt("Permission mode [acceptEdits/bypassPermissions] (default: acceptEdits): ")
 		if err != nil {
 			return fmt.Errorf("read permission mode: %w", err)
 		}
 		if permMode == "" {
-			permMode = "bypassPermissions"
+			permMode = "acceptEdits"
 		}
 		tomlContent := fmt.Sprintf("permission_mode = %q\n", permMode)
 		if err := os.WriteFile(tomlPath, []byte(tomlContent), 0o644); err != nil {

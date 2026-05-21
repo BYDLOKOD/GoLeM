@@ -130,12 +130,12 @@ func run(args []string) int {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `Usage: glm {session|run|start|status|result|log|list|clean|kill|chain|pipeline|update|doctor|config|mcp} [options]
+	fmt.Fprint(w, `Usage: glm <command> [options]
 
 Commands:
   session [flags] [claude flags]     Interactive Claude Code
   run   [flags] "prompt"             Sync execution
-  start [flags] "prompt"             Async execution
+  start [flags] "prompt"             Async execution (blocks; see note below)
   chain [flags] "p1" "p2" ...        Chained execution
   pipeline FILE                      Execute DAG pipeline from JSON file
   status  JOB_ID                     Check job status
@@ -148,6 +148,16 @@ Commands:
   doctor                             Check system health
   config  {show|set KEY VAL}         Manage configuration
   mcp                                MCP server (JSON-RPC over stdio)
+  version                            Print version and exit
+  help                               Print this usage and exit
+
+Maintenance:
+  _install                           Interactive first-time setup (run after install)
+  _uninstall                         Remove markers, deregister MCP, optionally drop key
+
+Notes:
+  start prints a job ID immediately but the parent process blocks until the
+  job finishes; for shell-level background use 'glm start ... &'.
 
 Flags:
   -d, --dir DIR       Working directory

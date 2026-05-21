@@ -180,7 +180,7 @@ func TestLoadHappyPath(t *testing.T) {
 
 func TestUseDefaultsWhenNoTOML(t *testing.T) {
 	configDir, subagentDir := setupDirs(t)
-	// No glm.toml written — only the API key.
+	// No glm.toml written - only the API key.
 	writeAPIKey(t, configDir, seedHappyPathAPIKey)
 
 	cfg, err := Load(configDir, subagentDir)
@@ -191,8 +191,8 @@ func TestUseDefaultsWhenNoTOML(t *testing.T) {
 	if cfg.Model != "glm-5.1" {
 		t.Errorf("Model: got %q, want %q", cfg.Model, "glm-5.1")
 	}
-	if cfg.PermissionMode != "bypassPermissions" {
-		t.Errorf("PermissionMode: got %q, want %q", cfg.PermissionMode, "bypassPermissions")
+	if cfg.PermissionMode != "acceptEdits" {
+		t.Errorf("PermissionMode: got %q, want %q", cfg.PermissionMode, "acceptEdits")
 	}
 	if cfg.ZaiBaseURL != "https://api.z.ai/api/anthropic" {
 		t.Errorf("ZaiBaseURL: got %q, want %q", cfg.ZaiBaseURL, "https://api.z.ai/api/anthropic")
@@ -217,8 +217,8 @@ func TestEmptyTOMLUsesDefaults(t *testing.T) {
 	if cfg.Model != "glm-5.1" {
 		t.Errorf("Model: got %q, want %q", cfg.Model, "glm-5.1")
 	}
-	if cfg.PermissionMode != "bypassPermissions" {
-		t.Errorf("PermissionMode: got %q, want %q", cfg.PermissionMode, "bypassPermissions")
+	if cfg.PermissionMode != "acceptEdits" {
+		t.Errorf("PermissionMode: got %q, want %q", cfg.PermissionMode, "acceptEdits")
 	}
 }
 
@@ -428,7 +428,7 @@ func TestEnvMaxParallelIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	// No APIRPS field to check — just verify load succeeds.
+	// No APIRPS field to check - just verify load succeeds.
 	_ = cfg
 }
 
@@ -456,7 +456,7 @@ func TestValidateEmptyAPIKey(t *testing.T) {
 // ---- Scenario: max_parallel in TOML is silently ignored ----
 
 // TestMaxParallelTOMLKeyIgnored verifies that the removed max_parallel (and its
-// alias api_rps) TOML keys are silently ignored — including invalid values.
+// alias api_rps) TOML keys are silently ignored - including invalid values.
 // Config loading must succeed when these keys are present.
 func TestMaxParallelTOMLKeyIgnored(t *testing.T) {
 	configDir, subagentDir := setupDirs(t)
@@ -657,8 +657,8 @@ func TestHardcodedConstants(t *testing.T) {
 	if DefaultModel != "glm-5.1" {
 		t.Errorf("DefaultModel constant: got %q, want %q", DefaultModel, "glm-5.1")
 	}
-	if DefaultPermissionMode != "bypassPermissions" {
-		t.Errorf("DefaultPermissionMode constant: got %q, want %q", DefaultPermissionMode, "bypassPermissions")
+	if DefaultPermissionMode != "acceptEdits" {
+		t.Errorf("DefaultPermissionMode constant: got %q, want %q", DefaultPermissionMode, "acceptEdits")
 	}
 }
 
@@ -1231,7 +1231,7 @@ func TestEnvGLMSystemPromptOverride(t *testing.T) {
 
 func TestSystemPromptMultiline(t *testing.T) {
 	// Single-line value with embedded newline escape is NOT supported by this
-	// parser — it is a plain key=value line-based parser. Instead we test that
+	// parser - it is a plain key=value line-based parser. Instead we test that
 	// a quoted single-line system_prompt spanning no newlines is parsed
 	// correctly, which is the only multiline-like form the parser handles.
 	toml := `system_prompt = "You are helpful. Be concise."

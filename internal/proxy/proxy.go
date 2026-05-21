@@ -16,6 +16,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -83,7 +84,7 @@ type Proxy struct {
 func New(cfg Config) *Proxy {
 	var registry *ModelRegistry
 	if len(cfg.Models) > 0 {
-		// Per-model mode: build registry, no global default (unknown → 400).
+		// Per-model mode: build registry, no global default (unknown -> 400).
 		registry = NewRegistryFromMap(cfg.Models, 0)
 	} else {
 		// Global semaphore backward-compat mode.
@@ -556,11 +557,12 @@ func (p *Proxy) buildReverseProxy() (*httputil.ReverseProxy, error) {
 
 	rp.ModifyResponse = func(resp *http.Response) error {
 		if resp.StatusCode >= 400 {
-			bodyBytes, _ := io.ReadAll(resp.Body)
+			// Cap upstream error body to 64KiB; a 5xx page from a CDN can be megabytes.
+			bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			p.logger.Printf("[UPSTREAM] %d | model=%s body=%s",
-				resp.StatusCode, resp.Request.Header.Get("X-Model"), string(bodyBytes))
+				resp.StatusCode, resp.Request.Header.Get("X-Model"), redactBody(bodyBytes, 512))
 		}
 		return nil
 	}
@@ -576,6 +578,23 @@ func (p *Proxy) buildReverseProxy() (*httputil.ReverseProxy, error) {
 	}
 
 	return rp, nil
+}
+
+// redactBodyKeyRE matches sensitive JSON fields whose values must be replaced
+// before the upstream error body is logged. Z.AI's 4xx responses occasionally
+// echo back the inbound key or token, so anything that looks like a credential
+// is masked.
+var redactBodyKeyRE = regexp.MustCompile(`(?i)"(api_key|authorization|x-api-key|token|access_token|bearer)"\s*:\s*"[^"]*"`)
+
+// redactBody truncates b to max bytes (appending a marker) and replaces
+// credential-like JSON fields with [REDACTED].
+func redactBody(b []byte, max int) string {
+	if len(b) > max {
+		b = append([]byte(nil), b[:max]...)
+		b = append(b, []byte("...[truncated]")...)
+	}
+	s := string(b)
+	return redactBodyKeyRE.ReplaceAllString(s, `"$1":"[REDACTED]"`)
 }
 
 // joinPaths concatenates base and suffix, ensuring exactly one slash between them.

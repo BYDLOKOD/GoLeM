@@ -11,7 +11,7 @@
 <p align="center">
   Spawn autonomous Claude Code agents powered by GLM-5.1 via Z.AI.<br>
   Each golem is a full Claude Code instance - reads files, edits code, runs tests, uses MCP servers and skills.<br>
-  You stay on Opus. Your golems run free and parallel through Z.AI. Ship faster.
+  You stay on Opus. Your golems run in parallel through your Z.AI Coding Plan.
 </p>
 
 <p align="center">
@@ -25,11 +25,29 @@
 
 ![Architecture](docs/architecture.svg?v=5)
 
+## What is this, in one paragraph
+
+**Claude Code** is Anthropic's CLI agent - it reads files, edits them, runs
+tests, talks to MCP servers. **Z.AI** is a Chinese provider that hosts the
+**GLM-5.1** model behind an Anthropic-compatible API. **MCP** (Model Context
+Protocol) is how Claude Code discovers tools at runtime. GoLeM is a small Go
+CLI (`glm`) that registers itself as an MCP server, so when you ask Opus to
+"spawn three workers to write tests", it can call `glm_start` three times.
+Each "**golem**" is a real Claude Code instance running GLM-5.1 - same tool
+surface as Opus, lower per-token cost, no Anthropic spend on the workers.
+
+You stay on your Anthropic plan (Opus orchestrator). The workers run on
+your Z.AI Coding Plan. Linux, macOS, WSL.
+
 ## TL;DR (60 seconds)
 
 ```bash
 # 1. Install (needs Go 1.25+ and the Claude Code CLI on PATH)
 go install github.com/veschin/GoLeM/cmd/glm@latest
+
+# Make sure $(go env GOPATH)/bin is on your PATH. If `glm` is not found after
+# install, add: export PATH="$(go env GOPATH)/bin:$PATH"
+
 glm _install                       # prompts for your Z.AI key, wires everything up
 
 # 2. Spawn a golem from the shell
@@ -38,6 +56,10 @@ glm run --dir "$PWD" --timeout 300 "add a unit test for parseFlags and run it"
 # 3. Or let Claude Code call them via the MCP server (registered automatically)
 #    The host Opus session now has glm_run / glm_start / glm_chain / glm_pipeline tools.
 ```
+
+The default permission mode is `acceptEdits` - golems auto-apply file edits
+but ask before running destructive shell commands. For full autonomy use
+`--unsafe` per call or `permission_mode = "bypassPermissions"` in `glm.toml`.
 
 That's it. The rest of this README is the reference.
 

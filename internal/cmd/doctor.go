@@ -145,7 +145,7 @@ func checkAPIKey(apiKeyPath string) CheckResult {
 		return CheckResult{
 			Name:   "api_key",
 			Status: "FAIL",
-			Detail: "API key path not configured",
+			Detail: "API key path not configured (run 'glm _install')",
 		}
 	}
 	data, err := os.ReadFile(apiKeyPath)
@@ -153,14 +153,14 @@ func checkAPIKey(apiKeyPath string) CheckResult {
 		return CheckResult{
 			Name:   "api_key",
 			Status: "FAIL",
-			Detail: "API key file not found",
+			Detail: "API key file not found (run 'glm _install' to set up)",
 		}
 	}
 	if strings.TrimSpace(string(data)) == "" {
 		return CheckResult{
 			Name:   "api_key",
 			Status: "FAIL",
-			Detail: "API key file is empty",
+			Detail: "API key file is empty (run 'glm _install' to refresh)",
 		}
 	}
 	return CheckResult{

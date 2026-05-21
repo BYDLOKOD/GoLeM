@@ -175,8 +175,8 @@ func TestInstallUsesDefaultPermissionMode(t *testing.T) {
 	}
 
 	tomlData, _ := os.ReadFile(filepath.Join(opts.ConfigDir, "glm.toml"))
-	if !strings.Contains(string(tomlData), "bypassPermissions") {
-		t.Errorf("glm.toml: got %q, expected to contain 'bypassPermissions'", string(tomlData))
+	if !strings.Contains(string(tomlData), "acceptEdits") {
+		t.Errorf("glm.toml: got %q, expected to contain 'acceptEdits'", string(tomlData))
 	}
 }
 

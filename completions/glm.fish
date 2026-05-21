@@ -34,8 +34,8 @@ complete -c glm -l help -s h -d "Show help"
 # Flags for session, run, start, chain
 set -l exec_commands session run start chain
 
-complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -s d -d "Working directory" -x -a "(__fish_complete_directories)"
-complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -s t -d "Timeout in seconds" -x
+complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -s d -l dir -d "Working directory" -x -a "(__fish_complete_directories)"
+complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -s t -l timeout -d "Timeout in seconds" -x
 complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -s m -l model -d "Set all model slots" -x -a "glm-5.1 glm-5 glm-4"
 complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -l opus -d "Set opus model" -x -a "glm-5.1 glm-5 glm-4"
 complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -l sonnet -d "Set sonnet model" -x -a "glm-5.1 glm-5 glm-4"

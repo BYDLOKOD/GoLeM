@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Exercises the `go install ...@latest` happy path: a Reddit reader
-# follows the TL;DR, expects glm v1.2.0 (or newer) and a working install.
+# follows the TL;DR, expects glm v1.2.2 (or newer) and a working install.
 
 set -uo pipefail
 
@@ -59,9 +59,9 @@ echo "OK  go install completed (version=$(glm version 2>/dev/null | awk '{print 
 
 # 2. Sanity: glm is on PATH and reports the new version.
 step "glm on PATH"                   command -v glm
-step "glm version is 1.2.0"          bash -c 'glm version | grep -q "glm 1.2.0"'
+step "glm version is 1.2.2"          bash -c 'glm version | grep -q "glm 1.2.2"'
 
-# 3. Long-form flags introduced in v1.2.0 must work (this catches the case
+# 3. Long-form flags introduced in v1.2.2 must work (this catches the case
 #    where a stale @latest from the module proxy still resolved to v1.x).
 step "glm run --help on stdout"      bash -c 'glm run --help | grep -q "Commands:"'
 step "--dir long form recognised"    bash -c 'glm run --dir /nonexistent --timeout 5 "x" 2>&1 | grep -q "Directory not found"'
@@ -94,11 +94,11 @@ step "real glm run via Z.AI" \
     bash -c 'set -o pipefail; glm run --dir /tmp/work --timeout 90 "What is the answer in file.txt? Respond with just the number." > /tmp/run.out 2>&1; rc=$?; tail -10 /tmp/run.out; exit $rc'
 
 # 7. glm update: in go-install mode this re-runs `go install ...@latest`.
-#    Since @latest is already v1.2.0, the call should be idempotent.
+#    Since @latest is already v1.2.2, the call should be idempotent.
 step "glm update (go-install, idempotent)" \
     bash -c 'glm update > /tmp/update.out 2>&1; rc=$?; tail -10 /tmp/update.out; exit $rc'
-step "glm version still 1.2.0 after update" \
-    bash -c 'glm version | grep -q "glm 1.2.0"'
+step "glm version still 1.2.2 after update" \
+    bash -c 'glm version | grep -q "glm 1.2.2"'
 step "CLAUDE.md re-injected after update" \
     bash -c 'grep -q "GLM-SUBAGENT-START" "$HOME/.claude/CLAUDE.md"'
 

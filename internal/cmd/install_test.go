@@ -526,7 +526,9 @@ func TestUninstallRemovesConfigDirectory(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, "config"), 0o755)
 	os.WriteFile(filepath.Join(tmpDir, "CLAUDE.md"), []byte("<!-- GLM-SUBAGENT-START -->x<!-- GLM-SUBAGENT-END -->"), 0o644)
 
-	opts, _ := uninstallOpts(t, tmpDir, "n\nn\n")
+	// User accepts removal of both the API key and job artifacts; the config
+	// directory is then taken down together with the key.
+	opts, _ := uninstallOpts(t, tmpDir, "y\ny\n")
 
 	err := cmd.UninstallCmd(opts)
 	if err != nil {
@@ -535,6 +537,33 @@ func TestUninstallRemovesConfigDirectory(t *testing.T) {
 
 	if _, err := os.Stat(opts.ConfigDir); !os.IsNotExist(err) {
 		t.Error("config directory should be removed")
+	}
+}
+
+// ─── AC10b: Keeps config directory when user declines to remove API key ─────────
+
+func TestUninstallKeepsConfigDirectoryWhenKeyKept(t *testing.T) {
+	tmpDir := t.TempDir()
+	configDir := filepath.Join(tmpDir, "config")
+	os.MkdirAll(configDir, 0o755)
+	keyPath := filepath.Join(configDir, "zai_api_key")
+	os.WriteFile(keyPath, []byte("sk-test"), 0o600)
+	os.WriteFile(filepath.Join(configDir, "glm.toml"), []byte(`permission_mode = "bypassPermissions"`+"\n"), 0o644)
+	os.WriteFile(filepath.Join(tmpDir, "CLAUDE.md"), []byte("<!-- GLM-SUBAGENT-START -->x<!-- GLM-SUBAGENT-END -->"), 0o644)
+
+	// Decline removal of the API key. The directory must stay so the key
+	// the user explicitly chose to keep is not silently wiped.
+	opts, _ := uninstallOpts(t, tmpDir, "n\nn\n")
+
+	if err := cmd.UninstallCmd(opts); err != nil {
+		t.Fatalf("UninstallCmd: %v", err)
+	}
+
+	if _, err := os.Stat(opts.ConfigDir); os.IsNotExist(err) {
+		t.Fatal("config directory should be preserved when the user declined to remove the key")
+	}
+	if _, err := os.Stat(keyPath); err != nil {
+		t.Errorf("API key file should still exist: %v", err)
 	}
 }
 

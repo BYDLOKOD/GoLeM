@@ -67,10 +67,10 @@ func (p *prompter) promptYN(message string) (bool, error) {
 // glmSubagentTemplate is the GLM section content to inject into CLAUDE.md.
 // The actual template content is loaded from CloneDir/CLAUDE.md if available.
 const glmSubagentTemplate = `<!-- GLM-SUBAGENT-START -->
-## GLM Subagent (GLM-5 via Z.AI) — MANDATORY
+## GLM Subagent (GLM-5 via Z.AI) - MANDATORY
 
-You have access to ` + "`glm`" + ` — a tool that spawns parallel Claude Code agents powered by GLM-5 via Z.AI.
-` + "GLM agents are free, full Claude Code instances — they read/write files, run tests, use MCP servers and tools." + `
+You have access to ` + "`glm`" + ` - a tool that spawns parallel Claude Code agents powered by GLM-5 via Z.AI.
+` + "GLM agents are free, full Claude Code instances - they read/write files, run tests, use MCP servers and tools." + `
 
 ### When to delegate to GLM
 - **Implementation work**: coding, refactoring, file edits, test writing
@@ -82,7 +82,7 @@ You have access to ` + "`glm`" + ` — a tool that spawns parallel Claude Code a
 ` + "```" + `
 glm run -d <dir> -t <sec> "prompt"    # sync: blocks until done, prints result
 glm start -d <dir> -t <sec> "prompt"  # async: prints job ID, runs in background
-glm chain -d <dir> "step1" "step2"    # sequential: stdout of step N → prompt of step N+1
+glm chain -d <dir> "step1" "step2"    # sequential: stdout of step N -> prompt of step N+1
 glm status <JOB_ID>                   # check: queued/running/done/failed/timeout
 glm result <JOB_ID>                   # read job stdout
 glm log    <JOB_ID>                   # read file changelog (edits, writes, deletes)
@@ -93,7 +93,7 @@ glm kill   <JOB_ID>                   # stop a running job
 ### Rules
 - **Always set -t (timeout)**: agents can hang. Use ` + "`-t 300`" + ` (5 min) or ` + "`-t 600`" + ` (10 min).
 - **Always set -d (directory)**: agents work in that directory. Use absolute paths.
-- **Flags before prompt**: ` + "`glm start -d /path -t 300 \"your prompt\"`" + ` — prompt is positional, must come last.
+- **Flags before prompt**: ` + "`glm start -d /path -t 300 \"your prompt\"`" + ` - prompt is positional, must come last.
 - **Check results**: after ` + "`glm start`" + `, poll with ` + "`glm list`" + ` or ` + "`glm status <ID>`" + `, then read with ` + "`glm result <ID>`" + `.
 - **Rate limiting**: per-model concurrency limits are configured via the `+"`[models]`"+` section in glm.toml. No global limit is enforced.
 - **No mocks, no stubs**: GLM agents write real code in real directories.
@@ -143,7 +143,7 @@ func InstallCmd(opts InstallOptions) error {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
-	// Step 1: API key — check existing, then prompt.
+	// Step 1: API key - check existing, then prompt.
 	apiKeyPath := filepath.Join(opts.ConfigDir, "zai_api_key")
 	apiKeyExists := false
 	if _, err := os.Stat(apiKeyPath); err == nil {
@@ -357,8 +357,18 @@ func UninstallCmd(opts UninstallOptions) error {
 	}
 
 	// Step 5: Remove config directory.
-	if err := os.RemoveAll(opts.ConfigDir); err != nil {
-		return fmt.Errorf("remove config dir: %w", err)
+	// Only delete the whole directory when the user agreed to remove the API
+	// key in Step 3. Otherwise the key would be wiped out anyway, which would
+	// silently destroy something the user explicitly asked to keep.
+	if removeKey {
+		if err := os.RemoveAll(opts.ConfigDir); err != nil {
+			return fmt.Errorf("remove config dir: %w", err)
+		}
+	} else {
+		// Best-effort cleanup of installer-managed files; ignore not-exist.
+		for _, name := range []string{"glm.toml", "config.json"} {
+			_ = os.Remove(filepath.Join(opts.ConfigDir, name))
+		}
 	}
 
 	_, _ = fmt.Fprintln(out, "GoLeM uninstalled.")
@@ -385,7 +395,7 @@ type UpdateOptions struct {
 //  1. Validates CloneDir is a git repository.
 //  2. Records the current HEAD revision.
 //  3. Runs "git pull --ff-only".
-//  4. Displays old→new revisions and the commit log between them.
+//  4. Displays old->new revisions and the commit log between them.
 //  5. Re-injects the GLM section into ClaudeMDPath.
 //
 // For go-install:
@@ -442,7 +452,7 @@ func updateSource(cloneDir, claudeMDPath string, out io.Writer) error {
 		return fmt.Errorf("get new HEAD: %w", err)
 	}
 
-	_, _ = fmt.Fprintf(out, "Updated: %s → %s\n", oldRev, newRev)
+	_, _ = fmt.Fprintf(out, "Updated: %s -> %s\n", oldRev, newRev)
 
 	// Show commit log between old and new revisions if they differ.
 	if oldRev != newRev {
@@ -536,7 +546,7 @@ func InjectClaudeMD(claudeMDPath, template string) error {
 	// Check if file exists.
 	existing, err := os.ReadFile(claudeMDPath)
 	if os.IsNotExist(err) {
-		// File does not exist — create it with only the section.
+		// File does not exist - create it with only the section.
 		return os.WriteFile(claudeMDPath, []byte(templateContent+"\n"), 0o644)
 	}
 	if err != nil {
@@ -548,14 +558,14 @@ func InjectClaudeMD(claudeMDPath, template string) error {
 	endIdx := strings.Index(content, glmSectionEnd)
 
 	if startIdx >= 0 && endIdx > startIdx {
-		// Both markers found — replace the section between them (inclusive).
+		// Both markers found - replace the section between them (inclusive).
 		before := content[:startIdx]
 		after := content[endIdx+len(glmSectionEnd):]
 		newContent := before + templateContent + after
 		return os.WriteFile(claudeMDPath, []byte(newContent), 0o644)
 	}
 
-	// No markers — append the section at the end.
+	// No markers - append the section at the end.
 	// Add a newline separator if the file doesn't end with one.
 	if len(content) > 0 && !strings.HasSuffix(content, "\n") {
 		content += "\n"
@@ -680,7 +690,7 @@ func RemoveClaudeMDSection(claudeMDPath string) error {
 	endIdx := strings.Index(content, glmSectionEnd)
 
 	if startIdx < 0 || endIdx <= startIdx {
-		// No markers found — no-op.
+		// No markers found - no-op.
 		return nil
 	}
 

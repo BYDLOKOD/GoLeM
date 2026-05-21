@@ -225,6 +225,11 @@ func hasFlag(args []string, flag string) bool {
 	return slices.Contains(args, flag)
 }
 
+// hasHelpFlag is true when -h or --help appears in args.
+func hasHelpFlag(args []string) bool {
+	return hasFlag(args, "-h") || hasFlag(args, "--help")
+}
+
 // stripFlag removes a boolean flag from args and returns the cleaned slice.
 func stripFlag(args []string, flag string) []string {
 	result := make([]string, 0, len(args))
@@ -250,6 +255,10 @@ func getFlagValue(args []string, flag string) (string, []string) {
 }
 
 func cmdRun(args []string) int {
+	if hasHelpFlag(args) {
+		usage(os.Stdout)
+		return 0
+	}
 	jsonMode := hasFlag(args, "--json")
 
 	flags, err := cmd.ParseFlags(args)
@@ -315,6 +324,10 @@ func cmdRun(args []string) int {
 }
 
 func cmdStart(args []string) int {
+	if hasHelpFlag(args) {
+		usage(os.Stdout)
+		return 0
+	}
 	flags, err := cmd.ParseFlags(args)
 	if err != nil {
 		return die(err)
@@ -621,6 +634,10 @@ func cmdKill(args []string) int {
 }
 
 func cmdChain(args []string) int {
+	if hasHelpFlag(args) {
+		usage(os.Stdout)
+		return 0
+	}
 	// Parse chain-specific flags.
 	continueOnError := hasFlag(args, "--continue-on-error")
 
@@ -704,6 +721,10 @@ func extractPrompts(args []string) []string {
 }
 
 func cmdPipeline(args []string) int {
+	if hasHelpFlag(args) {
+		usage(os.Stdout)
+		return 0
+	}
 	// Parse --system-prompt and --constraint flags from args.
 	// The pipeline file path is the first non-flag argument.
 	var systemPromptFlag string

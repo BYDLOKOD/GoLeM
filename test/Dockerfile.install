@@ -1,0 +1,25 @@
+# Tests the install.sh curl|bash one-liner path end-to-end.
+# Image is intentionally minimal: no glm preinstalled, no GoLeM source in context.
+# The Z.AI key must be mounted at /home/testuser/.config/GoLeM/zai_api_key.
+FROM golang:alpine
+
+RUN apk add --no-cache bash nodejs npm git ca-certificates curl
+
+# claude CLI from Anthropic
+RUN npm install -g @anthropic-ai/claude-code
+
+# Non-root test user
+RUN adduser -D -u 1000 -s /bin/bash testuser
+USER testuser
+WORKDIR /home/testuser
+
+# Pre-create config dirs so the bind-mount inherits the right owner
+RUN mkdir -p /home/testuser/.config/GoLeM /home/testuser/.claude/subagents
+
+ENV PATH="/home/testuser/.local/bin:/home/testuser/go/bin:${PATH}"
+
+# Smoke script lives outside the project source tree - embed it in the image
+COPY --chown=testuser:testuser test/install-smoke.sh /home/testuser/install-smoke.sh
+RUN chmod +x /home/testuser/install-smoke.sh
+
+CMD ["bash", "/home/testuser/install-smoke.sh"]

@@ -1,0 +1,11 @@
+.git
+.gitignore
+.claude
+.dockerignore
+*.md
+GoLeM.png
+glm
+/glm
+/GoLeM
+docs/architecture.svg
+test/Dockerfile.*

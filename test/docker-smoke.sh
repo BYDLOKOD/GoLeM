@@ -5,7 +5,7 @@
 #
 # Each step is announced and shells log clearly on failure.
 
-set -u
+set -uo pipefail
 
 PASS=0
 FAIL=0
@@ -121,10 +121,30 @@ The file contains a single sentence so a model can summarize it.
 INNER
 
 step "real glm run via Z.AI (90s timeout)" \
-    bash -c 'glm run --dir /tmp/glm-test-workdir --timeout 90 "Read HELLO.md and answer in one sentence what it says." 2>&1 | tail -10'
+    bash -c 'set -o pipefail; glm run --dir /tmp/glm-test-workdir --timeout 90 "Read HELLO.md and answer in one sentence what it says." > /tmp/run.out 2>&1; rc=$?; tail -10 /tmp/run.out; exit $rc'
 
 step "real glm chain via Z.AI (120s timeout)" \
-    bash -c 'glm chain --dir /tmp/glm-test-workdir --timeout 120 "List files in this directory" "How many files are there?" 2>&1 | tail -10'
+    bash -c 'set -o pipefail; glm chain --dir /tmp/glm-test-workdir --timeout 120 "List files in this directory" "How many files are there?" > /tmp/chain.out 2>&1; rc=$?; tail -10 /tmp/chain.out; exit $rc'
+
+# Real DAG pipeline via Z.AI
+cat > /tmp/glm-test-workdir/pipeline.json <<'PIPE'
+{
+  "steps": [
+    {"id": "list", "prompt": "List all files in this directory by name only, one per line."},
+    {"id": "count", "prompt": "Count how many lines the previous step produced. Reply with the number only.", "depends_on": ["list"]}
+  ]
+}
+PIPE
+
+step "real glm pipeline via Z.AI (180s timeout)" \
+    bash -c 'set -o pipefail; cd /tmp/glm-test-workdir && glm pipeline /tmp/glm-test-workdir/pipeline.json > /tmp/pipeline.out 2>&1; rc=$?; tail -15 /tmp/pipeline.out; exit $rc'
+
+# MCP tools/call - actually invoke glm_run through the MCP interface
+step "mcp tools/call glm_run via Z.AI" \
+    bash -c '(printf "%s\n%s\n%s\n" \
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}" \
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"glm_run\",\"arguments\":{\"dir\":\"/tmp/glm-test-workdir\",\"timeout\":90,\"prompt\":\"Reply with the single word OK and nothing else.\"}}}" \
+        ""; sleep 1) | timeout 120 glm mcp 2>/tmp/mcp.err | tee /tmp/mcp.out | grep -q "\"id\":2"'
 
 # ---- _uninstall (answer N for mounted key, y for jobs) ----
 {

@@ -3,56 +3,62 @@ id: handoff
 kind: guide
 ---
 
-# Handoff - GoLeM v2.0.0
+# Handoff - GoLeM v2.0.0 release
 
 See also: [00_index.md](00_index.md).
 
 ## Current state
 
-Branch: `main`. Last merge: PR #1 (Arsolitt/main), commit `a9dbccd`.
+Branch: `main`. Latest tag: `v2.0.0` (release prep round).
 
-All 17 test packages pass. No test failures. Full run takes ~60 s because
-`internal/claude`, `internal/cmd`, and `internal/mcp/tools` actually invoke
-the `claude` binary where not guarded by `-short`.
+All 17 packages pass `go test ./... -short`, `go test -race ./...`, and a
+Docker-based end-to-end smoke test (`test/Dockerfile.smoke` +
+`test/docker-smoke.sh`) against a real Z.AI account.
 
 ```
-go test ./...   # all 17 packages pass
+go test ./...                              # full suite
+go test ./... -short                       # excludes real-claude tests
+go test -race ./...                        # race detector
+bash test/docker-smoke.sh                  # in-container smoke (needs Docker)
 ```
 
-Binary version constant: `version = "2.0.0"` (`cmd/glm/main.go:31`).
+Binary version constant: `version = "2.0.0"` (`cmd/glm/main.go`).
 
-## What exists
+## What was fixed in the release prep
 
-The merge added six new packages on top of the pre-merge baseline:
+These bugs were caught during the v2.0.0 smoke pass and are now closed:
 
-| Package | Purpose |
-|---------|---------|
-| `internal/event` | Pub/sub event bus |
-| `internal/artifact` | Typed artifact persistence (text/JSON/file_ref) |
-| `internal/slot/notify.go` | Unix socket wakeup for slot waiters |
-| `internal/retry` | Exponential backoff with jitter |
-| `internal/router` | Prompt complexity estimation (light/medium/heavy) |
-| `internal/prompt` | Constraint expansion + system prompt assembly |
-| `internal/dag` | DAG pipeline with scheduler, gate steps, retry |
-| `internal/mcp` | JSON-RPC 2.0 MCP server + stdio transport |
-| `internal/mcp/tools` | Eight MCP tool handlers |
-| `internal/proxy` | Per-model registry + retry (extended from pre-merge) |
-
-Key behavioral change: global `api_rps` / `max_parallel` config key is
-silently ignored (backward compat). Per-model concurrency is now configured
-via `[models]` TOML section.
-
-## What does NOT exist
-
-- Event bus is wired into `internal/claude` and `internal/job`, but is NOT
-  connected to the MCP server (there is a `// TODO` at `main.go:1182`).
-  MCP progress notifications (`glm_start` progress events) are not emitted.
-- No HTTP-based API - only CLI and MCP (stdio).
-- No Windows support (flock, Unix sockets, `/proc` references).
-- No TOML format other than hand-rolled parser - no TOML arrays.
-- Provider multi-provider support exists in `internal/config/provider.go` but
-  is not exercised by any current command (all commands use `config.Load`
-  which reads only the Z.AI defaults path).
+- `glm help` previously printed to stderr. It now prints to stdout when called
+  as a command (`help`, `--help`, `-h`); stderr is used only when usage is
+  printed alongside an error.
+- `glm run/start/chain` accepted only `-d`/`-t`. The long forms `--dir` and
+  `--timeout` now work too and are reflected in completions.
+- The chain prompt extractor used a hard-coded flag list that did not include
+  the new long-form flags, which made `--dir VAL --timeout VAL` leak into the
+  prompt list. Fixed.
+- `glm _uninstall` removed the entire config directory unconditionally, which
+  silently wiped the API key when the user had declined the "Remove
+  credentials?" prompt. The config directory is now removed only when the key
+  is also removed; otherwise installer-managed files (`glm.toml`,
+  `config.json`) are deleted while the key is kept.
+- `glm config show` listed only ten keys and `config set` accepted only six,
+  so users could not configure `proxy_enabled`, `proxy_port`,
+  `proxy_idle_timeout`, `effort`, `system_prompt`, or
+  `exclude_dynamic_sections` through the CLI. Both commands now cover the full
+  set of writable keys.
+- Shell completions (`completions/glm.bash`, `completions/glm.fish`) were
+  missing the `pipeline` and `mcp` subcommands, the `--tier`,
+  `--system-prompt`, `--constraint`, and `--continue-on-error` flags, and the
+  `default` permission mode. Status filter included a non-existent `cancelled`
+  value. All fixed.
+- README listed the obsolete `slots OK 0/3 slots in use` and `proxy OK ...`
+  lines for `glm doctor`. The example now matches the actual output.
+- README recommended `glm config set api_rps 5` even though `api_rps` is a
+  removed key. Replaced with currently-supported keys and listed the full
+  `config set` vocabulary.
+- `docs/architecture.svg` was generated before PR #1 and still showed the
+  legacy `max_parallel slots / flock` model. Redrawn with the rate-limiting
+  proxy as a separate participant and `[models]`-based per-model concurrency.
 
 ## Read order for a new session
 
@@ -63,56 +69,41 @@ via `[models]` TOML section.
 5. [40_dag.md](40_dag.md) - if touching pipeline execution.
 6. [30_mcp.md](30_mcp.md) + [31_mcp_tools.md](31_mcp_tools.md) - if touching MCP.
 
-## Smoke test
+## Smoke test (local)
 
 ```bash
 cd /home/veschin/work/GoLeM
-go build -o /tmp/glm ./cmd/glm/     # should produce a binary, no errors
-go test ./... -short                 # all 17 packages pass, no real claude calls
-go vet ./...                         # no issues
-bash docs/llm/validate.sh           # OK: N links valid
+go build -o /tmp/glm ./cmd/glm/                  # binary, no errors
+go vet ./...                                     # no issues
+go test ./... -short                             # all 17 packages pass
+bash docs/llm/validate.sh                        # OK: N links valid
 ```
 
-Expected output for `go test ./... -short`:
+## Smoke test (Docker, real Z.AI key)
 
-```
-ok  github.com/veschin/GoLeM/internal/artifact
-ok  github.com/veschin/GoLeM/internal/claude
-ok  github.com/veschin/GoLeM/internal/cmd
-ok  github.com/veschin/GoLeM/internal/config
-ok  github.com/veschin/GoLeM/internal/dag
-ok  github.com/veschin/GoLeM/internal/event
-ok  github.com/veschin/GoLeM/internal/exitcode
-ok  github.com/veschin/GoLeM/internal/job
-ok  github.com/veschin/GoLeM/internal/log
-ok  github.com/veschin/GoLeM/internal/mcp
-ok  github.com/veschin/GoLeM/internal/mcp/tools
-ok  github.com/veschin/GoLeM/internal/prompt
-ok  github.com/veschin/GoLeM/internal/proxy
-ok  github.com/veschin/GoLeM/internal/retry
-ok  github.com/veschin/GoLeM/internal/router
-ok  github.com/veschin/GoLeM/internal/slot
-ok  github.com/veschin/GoLeM/internal/validation
+```bash
+docker build -f test/Dockerfile.smoke -t golem-smoke:test .
+docker run --rm \
+  -v "$HOME/.config/GoLeM/zai_api_key:/home/testuser/.config/GoLeM/zai_api_key:ro" \
+  golem-smoke:test
 ```
 
-## Next options
+The container builds glm from the current source tree, installs the Anthropic
+`claude` CLI via npm, runs `glm _install` non-interactively, calls
+`glm run` and `glm chain` through the rate-limiting proxy against Z.AI, drives
+the MCP server over stdio, and finally exercises `glm _uninstall`.
 
-**Path A (~1h): wire event bus into MCP progress notifications.**
-The `// TODO` at `cmd/glm/main.go:1182` points to this gap. Subscribe to
-`event.JobRunning`/`event.JobDone` in `cmdMCP` and emit JSON-RPC
-notifications via `transport.WriteNotification`. Needs a new notification
-method name agreed with the MCP client.
+## Outstanding (post-release)
 
-**Path B (~2h): add `update` command test coverage.**
-`internal/cmd/` has no test for `UpdateCmd`. The command shells out to `git`
-and `go build`; tests would need a fake binary injection pattern like
-`DoctorCmd` uses.
-
-**Path C (~30m): extend `[providers.*]` support to CLI commands.**
-`LoadProvider` exists but is unused at the CLI level. `cmdSession` and
-`cmdRun` both call `config.Load`, which ignores `[providers.*]`. Wiring it
-would let users switch between multiple API backends via config.
+- `internal/event` is not yet bridged into the MCP server. `glm_start`
+  invocations do not emit JSON-RPC progress notifications. See the `// TODO`
+  in `cmd/glm/main.go` near `cmdMCP`.
+- `internal/config/provider.go` (`LoadProvider`) is not called by any CLI
+  command. Wiring it would let users switch between multiple Anthropic-
+  compatible API backends via config.
+- Provider/multi-backend coverage and Windows support are out of scope for
+  v2.0.0.
 
 ## Agent error to log
 
-None this session (documentation bootstrap, no code changed).
+None this session.

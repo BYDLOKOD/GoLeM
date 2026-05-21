@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="GoLeM.png" width="600" alt="GoLeM — a tiny wizard commanding clay golems to do the heavy lifting" />
+  <img src="GoLeM.png" width="600" alt="GoLeM - a tiny wizard commanding clay golems to do the heavy lifting" />
 </p>
 
 <h1 align="center">GoLeM</h1>
@@ -10,30 +10,65 @@
 
 <p align="center">
   Spawn autonomous Claude Code agents powered by GLM-5.1 via Z.AI.<br>
-  Each golem is a full Claude Code instance — reads files, edits code, runs tests, uses MCP servers and skills.<br>
+  Each golem is a full Claude Code instance - reads files, edits code, runs tests, uses MCP servers and skills.<br>
   You stay on Opus. Your golems run free and parallel through Z.AI. Ship faster.
+</p>
+
+<p align="center">
+  <a href="https://github.com/veschin/GoLeM/releases"><img alt="Release" src="https://img.shields.io/github/v/release/veschin/GoLeM?display_name=tag&sort=semver"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/veschin/GoLeM"></a>
+  <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/veschin/GoLeM"></a>
+  <a href="#installation"><img alt="Platforms" src="https://img.shields.io/badge/platforms-linux%20%7C%20macos%20%7C%20wsl-blue"></a>
 </p>
 
 ---
 
-![Architecture](docs/architecture.svg?v=4)
+![Architecture](docs/architecture.svg?v=5)
+
+## TL;DR (60 seconds)
+
+```bash
+# 1. Install (needs Go 1.25+ and the Claude Code CLI on PATH)
+go install github.com/veschin/GoLeM/cmd/glm@latest
+glm _install                       # prompts for your Z.AI key, wires everything up
+
+# 2. Spawn a golem from the shell
+glm run --dir "$PWD" --timeout 300 "add a unit test for parseFlags and run it"
+
+# 3. Or let Claude Code call them via the MCP server (registered automatically)
+#    The host Opus session now has glm_run / glm_start / glm_chain / glm_pipeline tools.
+```
+
+That's it. The rest of this README is the reference.
 
 ## Installation
 
 ### Prerequisites
 
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) on `PATH`
 - [Z.AI Coding Plan](https://z.ai/subscribe) key
 - Go 1.25+
+- Linux, macOS, or WSL (Windows native is not supported - flock and Unix sockets)
 
-### Via go install (recommended)
+### Via install script (one-liner)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/veschin/GoLeM/main/install.sh | bash
+```
+
+The script clones the repo to `~/.local/share/GoLeM`, builds the binary,
+installs shell completions, and runs the interactive `glm _install` for you.
+
+### Via `go install`
 
 ```bash
 go install github.com/veschin/GoLeM/cmd/glm@latest
 glm _install
 ```
 
-`go install` places the binary in `$(go env GOPATH)/bin`, which should already be in your `PATH`.
+`go install` places the binary in `$(go env GOPATH)/bin`, which should already
+be in your `PATH`. Shell completions are not installed by this path - use the
+script above for autocompletion.
 
 ### From source
 
@@ -50,11 +85,13 @@ The interactive installer completes these steps in order:
 
 1. Prompts for your Z.AI API key and saves it to `~/.config/GoLeM/zai_api_key` (mode 0600)
 2. Prompts for permission mode and writes `~/.config/GoLeM/glm.toml`
-3. Injects the GLM subagent section into `~/.claude/CLAUDE.md` between `<!-- GLM-SUBAGENT-START -->` and `<!-- GLM-SUBAGENT-END -->` markers
-4. Creates `~/.claude/subagents/` directory
-5. Registers the MCP server in `~/.claude/settings.json`
+3. Writes `~/.config/GoLeM/config.json` with install metadata
+4. Injects the GLM subagent section into `~/.claude/CLAUDE.md` between `<!-- GLM-SUBAGENT-START -->` and `<!-- GLM-SUBAGENT-END -->` markers
+5. Creates `~/.claude/subagents/` directory
+6. Registers the MCP server (`golem`) under `mcpServers` in `~/.claude/settings.json`
 
-If you already have a key in `~/.config/zai/env` (legacy format), it migrates automatically.
+Re-running `_install` is idempotent: existing markers are replaced, existing
+MCP entries are updated, and you can choose to keep your existing API key.
 
 ### Manual installation (without interactive installer)
 
@@ -77,10 +114,10 @@ printf 'permission_mode = "bypassPermissions"\n' > ~/.config/GoLeM/glm.toml
 # Create subagents directory
 mkdir -p ~/.claude/subagents
 
-# Register MCP server — add this to ~/.claude/settings.json under "mcpServers"
+# Register MCP server - add this to ~/.claude/settings.json under "mcpServers"
 ```
 
-MCP registration entry for `~/.claude/settings.json` — use the full path to the binary:
+MCP registration entry for `~/.claude/settings.json` - use the full path to the binary:
 
 ```bash
 # Find the binary path
@@ -107,14 +144,17 @@ glm doctor
 Expected output (7 checks):
 
 ```text
-claude_cli       OK  claude 1.x.y found at /usr/local/bin/claude
-api_key          OK  API key configured via /home/user/.config/GoLeM/zai_api_key
-zai_reachable    OK  https://api.z.ai/api/anthropic responded with 200 in 120ms
-models           OK  opus=glm-5.1, sonnet=glm-5.1, haiku=glm-5.1
-slots            OK  0/3 slots in use
-platform         OK  linux/amd64
-proxy            OK  active=0 queued=0 total=0 uptime=0s
+claude_cli       OK    2.1.146 (Claude Code) found at /home/user/.local/bin/claude
+api_key          OK    API key configured via /home/user/.config/GoLeM/zai_api_key
+zai_reachable    OK    https://api.z.ai/api/anthropic responded with 200 in 714ms
+models           OK    opus=glm-5.1, sonnet=glm-5.1, haiku=glm-5.1
+slots            OK    0 running (unlimited)
+platform         OK    linux/amd64
+proxy            WARN  proxy not running
 ```
+
+`proxy` reports `WARN` until the first job auto-starts the rate-limiting proxy;
+after that it switches to `OK active=N queued=M total=K uptime=...`.
 
 ### Uninstall
 
@@ -129,9 +169,9 @@ Strips the GLM section from `~/.claude/CLAUDE.md`, deregisters the MCP server fr
 | Command | Usage | Description |
 | --- | --- | --- |
 | `session` | `glm session [flags] [claude-flags]` | Interactive Claude Code session via Z.AI |
-| `run` | `glm run --dir DIR --timeout SEC "prompt"` | Synchronous execution — blocks until done |
-| `start` | `glm start --dir DIR --timeout SEC "prompt"` | Asynchronous execution — returns job ID |
-| `chain` | `glm chain --dir DIR --timeout SEC "p1" "p2" ...` | Sequential chain — stdout flows to next prompt |
+| `run` | `glm run --dir DIR --timeout SEC "prompt"` | Synchronous execution - blocks until done |
+| `start` | `glm start --dir DIR --timeout SEC "prompt"` | Asynchronous execution - returns job ID |
+| `chain` | `glm chain --dir DIR --timeout SEC "p1" "p2" ...` | Sequential chain - stdout flows to next prompt |
 | `pipeline` | `glm pipeline FILE` | DAG pipeline from JSON file |
 | `status` | `glm status JOB_ID` | Check job status (queued/running/done/failed/timeout) |
 | `result` | `glm result JOB_ID` | Get job text output |
@@ -167,15 +207,15 @@ Apply to `session`, `run`, `start`, and `chain`.
 
 Claude Code uses three model slots internally: heavy tasks go to opus, normal tasks to sonnet, fast tasks to haiku. All three default to `glm-5.1`. `--model` changes all at once; `--opus`/`--sonnet`/`--haiku` change them individually.
 
-`session` passes unknown flags directly to `claude` — for example `--resume`, `--verbose`.
+`session` passes unknown flags directly to `claude` - for example `--resume`, `--verbose`.
 
-`chain` also accepts `--continue-on-error`: without it, the chain stops on the first failed step. When using the MCP `glm_chain` tool, the `steps` field (array of step objects) replaces `prompts` and enables per-step `validate` and `retry` — see [Chain validation and auto-retry](#chain-validation-and-auto-retry).
+`chain` also accepts `--continue-on-error`: without it, the chain stops on the first failed step. When using the MCP `glm_chain` tool, the `steps` field (array of step objects) replaces `prompts` and enables per-step `validate` and `retry` - see [Chain validation and auto-retry](#chain-validation-and-auto-retry).
 
 ### System Prompt and Constraints
 
 `--system-prompt TEXT` injects additional instructions into the subagent's system prompt for the duration of that invocation, overriding the `system_prompt` value from `glm.toml`. Use it to give the subagent context-specific rules without editing the global config.
 
-`--constraint KEY` appends a predefined behavior restriction to the system prompt. The flag is repeatable — pass it multiple times to combine constraints.
+`--constraint KEY` appends a predefined behavior restriction to the system prompt. The flag is repeatable - pass it multiple times to combine constraints.
 
 | Constraint | Effect |
 | --- | --- |
@@ -255,7 +295,7 @@ Steps without `depends_on` run in parallel. A failed step causes all steps that 
 
 Both chains and pipelines support per-step output validation and automatic retries.
 
-**Validation rules** check a step's stdout after execution. All conditions use AND logic — every condition must pass.
+**Validation rules** check a step's stdout after execution. All conditions use AND logic - every condition must pass.
 
 | Field | Type | Effect |
 | --- | --- | --- |
@@ -362,9 +402,15 @@ Priority: CLI flag > environment variable > glm.toml > hardcoded default.
 
 ```bash
 glm config show                   # all values with source labels: (default), (config), (env)
-glm config set api_rps 5
 glm config set model glm-5.1
+glm config set proxy_port 18080
+glm config set debug true
 ```
+
+`config set` accepts: `model`, `opus_model`, `sonnet_model`, `haiku_model`,
+`permission_mode`, `debug`, `proxy_enabled`, `proxy_idle_timeout`, `proxy_port`,
+`effort`, `system_prompt`, `exclude_dynamic_sections`. Other keys (e.g. the
+`[routing]` / `[models]` sections) must be edited in `glm.toml` directly.
 
 ### Environment variable overrides
 
@@ -381,7 +427,9 @@ glm config set model glm-5.1
 | `GLM_ROUTING_LIGHT` | `routing.light` |
 | `GLM_ROUTING_MEDIUM` | `routing.medium` |
 | `GLM_ROUTING_HEAVY` | `routing.heavy` |
+| `GLM_MODEL_CONCURRENCY` | `[models]` (format: `"name:N,name2:M"`) |
 | `GLM_EFFORT` | `effort` |
+| `GLM_SYSTEM_PROMPT` | `system_prompt` |
 | `GLM_EXCLUDE_DYNAMIC_SECTIONS` | `exclude_dynamic_sections` |
 | `GLM_LOG_FORMAT` | log format (`json` or human) |
 | `GLM_LOG_FILE` | log file path |
@@ -438,9 +486,9 @@ After `glm _install`, this section is injected into `~/.claude/CLAUDE.md`. Copy 
 
 ```markdown
 <!-- GLM-SUBAGENT-START -->
-## GLM Subagent Bridge — Usage Instructions
+## GLM Subagent Bridge - Usage Instructions
 
-You have access to `glm` — a CLI tool that spawns Claude Code agents powered by GLM models via Z.AI.
+You have access to `glm` - a CLI tool that spawns Claude Code agents powered by GLM models via Z.AI.
 Each golem is a full Claude Code instance with file access, test execution, and MCP server support.
 
 ### Decision: GoLeM vs built-in Agent tool
@@ -449,7 +497,7 @@ Use **GoLeM** (`glm`) when:
 
 - Task is routine (boilerplate, simple refactors, test generation, documentation)
 - You need true parallel execution (multiple independent tasks)
-- Cost optimization matters — GLM models are cheaper than Opus
+- Cost optimization matters - GLM models are cheaper than Opus
 - Task doesn't require Opus-level reasoning
 
 Use the **built-in Agent tool** when:
@@ -507,20 +555,20 @@ glm pipeline /path/to/pipeline.json
 
 ### Critical rules
 
-- **Always use `--dir` with absolute path** — golems work in that directory
-- **Always use `--timeout`** — prevents runaway jobs (300s for quick tasks, 600s for longer)
-- **Flags before prompt** — prompt is positional and must come last
-- **Poll async jobs** — after `glm start`, check with `glm status` or `glm list`
-- **Use `--json` when parsing** — structured output for programmatic processing
-- **Rate limiting is automatic** — `api_rps` config controls concurrency, extra jobs queue
+- **Always use `--dir` with absolute path** - golems work in that directory
+- **Always use `--timeout`** - prevents runaway jobs (300s for quick tasks, 600s for longer)
+- **Flags before prompt** - prompt is positional and must come last
+- **Poll async jobs** - after `glm start`, check with `glm status` or `glm list`
+- **Use `--json` when parsing** - structured output for programmatic processing
+- **Rate limiting is automatic** - `api_rps` config controls concurrency, extra jobs queue
 
 ### Error handling
 
-- Job status `failed` → check `glm result JOB_ID` for error details
-- Job status `timeout` → increase `--timeout` or break the task into smaller pieces
-- Exit code 124 → timeout
-- Exit code 1 → user error (bad arguments, missing config)
-- Exit code 127 → dependency missing (claude CLI not found)
+- Job status `failed` -> check `glm result JOB_ID` for error details
+- Job status `timeout` -> increase `--timeout` or break the task into smaller pieces
+- Exit code 124 -> timeout
+- Exit code 1 -> user error (bad arguments, missing config)
+- Exit code 127 -> dependency missing (claude CLI not found)
 
 ### Parallel execution pattern
 
@@ -555,17 +603,17 @@ glm run --dir /path --timeout 600 --tier heavy "complex architectural task"
 ## Architecture
 
 ```text
-Opus → glm CLI → claude subprocess → Z.AI API → GLM model
-                ↳ rate-limiting proxy (auto-started, serializes API calls)
-                ↳ file-based job storage (~/.claude/subagents/)
-                ↳ flock-based slot management
+Opus / MCP client -> glm CLI -> claude subprocess -> glm proxy -> Z.AI -> GLM-5.1
+                            ↳ file-based job storage (~/.claude/subagents/<project>/<job>/)
+                            ↳ per-model concurrency via [models] in glm.toml
+                            ↳ exponential-backoff retry on 429/5xx, Unix-socket slot wakeups
 ```
 
-**session** is `syscall.Exec` — `glm session` replaces itself with the `claude` process. No job directory, no output capture.
+**session** is `syscall.Exec` - `glm session` replaces itself with the `claude` process. No job directory, no output capture.
 
 **run** is synchronous. Creates a job dir, runs `claude -p --no-session-persistence --output-format json` with a timeout context, captures output, parses result, prints stdout, removes the job dir.
 
-**start** does the same but in a goroutine — job ID is printed immediately.
+**start** does the same but in a goroutine - job ID is printed immediately.
 
 **chain** runs steps sequentially. The result of step N is prepended to the prompt of step N+1 as context. Each step supports an optional `validate` rule (checked against stdout) and a `retry` config that re-runs the step with extended feedback on validation failure or non-zero exit.
 
@@ -610,8 +658,8 @@ go test -tags e2e ./internal/e2e/... -v   # e2e tests (requires claude CLI and A
 Conventions:
 
 - TDD: tests first, implementation second
-- No external dependencies — stdlib only
-- No mocks for internal code — real files, `t.TempDir()`, `httptest.NewServer`
+- No external dependencies - stdlib only
+- No mocks for internal code - real files, `t.TempDir()`, `httptest.NewServer`
 - Errors prefixed: `err:user`, `err:config`, `err:timeout`
 
 ## Platforms

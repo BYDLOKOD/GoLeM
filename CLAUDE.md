@@ -33,19 +33,27 @@ Examples: `feat(mcp): add JSON-RPC transport`, `fix(proxy): handle rate limit 42
 ## Project Structure
 
 ```text
-cmd/glm/main.go          -- CLI entry point (13 subcommands)
+cmd/glm/main.go             -- CLI entry point (17 subcommands)
 internal/
-  claude/                 -- Claude CLI execution & JSON parsing
-  cmd/                    -- Subcommand implementations
-  config/                 -- TOML config, env overrides, API keys
-  e2e/                    -- End-to-end tests
-  exitcode/               -- Exit code constants
-  job/                    -- Job lifecycle, status FSM, reconciliation
-  log/                    -- Structured logging (human/JSON)
-  prompt/                 -- Constraint expansion and system prompt assembly
-  proxy/                  -- Rate-limiting reverse proxy for Z.AI API
-  slot/                   -- File-based concurrency control (flock)
-  validation/             -- Chain output validation (contains, not_contains, matches)
+  artifact/                  -- Typed artifact persistence (text/JSON/file_ref)
+  channel/                   -- HTTP notification client + event bridge
+  claude/                    -- Claude CLI execution & JSON parsing
+  cmd/                       -- Subcommand implementations + install/uninstall/update
+  config/                    -- TOML config, env overrides, multi-provider support
+  dag/                       -- DAG pipeline engine (topological sort, parallel scheduler)
+  e2e/                       -- End-to-end tests (go:build e2e)
+  event/                     -- Publish/subscribe event bus
+  exitcode/                  -- Exit code constants and typed errors
+  job/                       -- Job lifecycle, status FSM, reconciliation
+  log/                       -- Structured logging (human/JSON)
+  mcp/                       -- MCP server (JSON-RPC over stdio)
+    tools/                   -- Eight MCP tool handlers
+  prompt/                    -- Constraint expansion and system prompt assembly
+  proxy/                     -- Rate-limiting reverse proxy for Z.AI API
+  retry/                     -- Exponential backoff with jitter
+  router/                    -- Complexity-based model routing
+  slot/                      -- Concurrency control (flock + Unix socket notify)
+  validation/                -- Chain output validation (contains, not_contains, matches)
 ```
 
 ## Build and Test
@@ -135,17 +143,13 @@ Step outputs can be validated by `internal/validation/` before the chain advance
 - API key: `~/.config/GoLeM/zai_api_key`
 - `system_prompt` - default system prompt prepended to every job (optional)
 
-## Roadmap
+## Status
 
-See `ROADMAP.md` for the full improvement plan.
-
-Key phases:
-
-- MCP Server (highest priority)
-- Streaming
-- Channels
-- DAG Pipeline
-- Smart Routing
+The merged work (PR #1) delivered: MCP server, DAG pipeline + chain validation,
+complexity-based routing, per-model proxy concurrency, event bus, typed
+artifacts, retry with jitter, prompt constraints. See `docs/llm/handoff.md`
+for the current next-session action plan and `docs/llm/00_index.md` for the
+package reference graph.
 
 ## Design Decisions
 

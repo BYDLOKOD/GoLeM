@@ -3,32 +3,34 @@ sequence: {
 
   dev_user: Developer
   ops_glm: "glm\nCLI"
+  px_proxy: "glm\nproxy"
   j_claude: "claude\nsubprocess"
-  ex_zai: "Z.AI\nGLM-5"
+  ex_zai: "Z.AI\nGLM-5.1"
   db_state: "~/.claude/\nsubagents/"
 
-  dev_user -> ops_glm: "glm run \"prompt\""
+  dev_user -> ops_glm: "glm run / chain / pipeline\n(or MCP tool call)"
 
   ops_glm -> ops_glm: "load config\n+ validate"
+  ops_glm -> px_proxy: "ensure proxy\n(auto-start)"
   ops_glm -> db_state: "create job dir"
 
   agents: {
-    label: "loop [max_parallel slots]"
+    label: "loop [each step]"
 
-    ops_glm -> ops_glm: "acquire slot\n(flock)"
-    ops_glm -> j_claude: "fork + env\ninjection"
+    ops_glm -> j_claude: "fork + env\n(BASE_URL = proxy)"
 
     work: {
       label: "loop [agent working]"
 
-      j_claude -> ex_zai: LLM call
-      ex_zai -> j_claude: response
+      j_claude -> px_proxy: "Anthropic HTTP"
+      px_proxy -> ex_zai: "rate-limit + retry"
+      ex_zai -> px_proxy: response
+      px_proxy -> j_claude: response
       j_claude -> j_claude: "read / edit\nrun / test"
     }
 
     j_claude -> ops_glm: "exit + JSON"
     ops_glm -> db_state: "stdout, changelog\nraw.json"
-    ops_glm -> ops_glm: "release slot"
   }
 
   ops_glm -> dev_user: "result\n+ exit code"

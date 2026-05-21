@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,7 +49,7 @@ type DoctorOptions struct {
 }
 
 // DoctorCmd runs all diagnostic checks and writes a human-readable report to w.
-// It always exits 0 (never returns a non-nil error for check failures — only
+// It always exits 0 (never returns a non-nil error for check failures - only
 // for I/O errors writing to w).
 func DoctorCmd(opts DoctorOptions, w io.Writer) error {
 	// Apply defaults.
@@ -355,16 +356,22 @@ func ConfigShowCmd(opts ConfigShowOptions, w io.Writer) error {
 
 	// Defaults.
 	defaults := map[string]string{
-		"model":              config.DefaultModel,
-		"opus_model":         config.DefaultModel,
-		"sonnet_model":       config.DefaultModel,
-		"haiku_model":        config.DefaultModel,
-		"permission_mode":    config.DefaultPermissionMode,
-		"debug":              "false",
-		"zai_base_url":       config.ZaiBaseURL,
-		"zai_api_timeout_ms": config.ZaiAPITimeoutMs,
-		"subagent_dir":       opts.SubagentDir,
-		"config_dir":         opts.ConfigDir,
+		"model":                    config.DefaultModel,
+		"opus_model":               config.DefaultModel,
+		"sonnet_model":             config.DefaultModel,
+		"haiku_model":              config.DefaultModel,
+		"permission_mode":          config.DefaultPermissionMode,
+		"debug":                    "false",
+		"proxy_enabled":            strconv.FormatBool(config.DefaultProxyEnabled),
+		"proxy_idle_timeout":       strconv.Itoa(config.DefaultProxyIdleTimeout),
+		"proxy_port":               strconv.Itoa(config.DefaultProxyPort),
+		"effort":                   "",
+		"system_prompt":            "",
+		"exclude_dynamic_sections": "false",
+		"zai_base_url":             config.ZaiBaseURL,
+		"zai_api_timeout_ms":       config.ZaiAPITimeoutMs,
+		"subagent_dir":             opts.SubagentDir,
+		"config_dir":               opts.ConfigDir,
 	}
 
 	// Read TOML config file.
@@ -376,14 +383,17 @@ func ConfigShowCmd(opts ConfigShowOptions, w io.Writer) error {
 		}
 	}
 
-	// Env var mappings: config_key → env_var_name.
+	// Env var mappings: config_key -> env_var_name.
 	envMappings := map[string]string{
-		"model":           "GLM_MODEL",
-		"opus_model":      "GLM_OPUS_MODEL",
-		"sonnet_model":    "GLM_SONNET_MODEL",
-		"haiku_model":     "GLM_HAIKU_MODEL",
-		"permission_mode": "GLM_PERMISSION_MODE",
-		"debug":           "GLM_DEBUG",
+		"model":                    "GLM_MODEL",
+		"opus_model":               "GLM_OPUS_MODEL",
+		"sonnet_model":             "GLM_SONNET_MODEL",
+		"haiku_model":              "GLM_HAIKU_MODEL",
+		"permission_mode":          "GLM_PERMISSION_MODE",
+		"debug":                    "GLM_DEBUG",
+		"effort":                   "GLM_EFFORT",
+		"system_prompt":            "GLM_SYSTEM_PROMPT",
+		"exclude_dynamic_sections": "GLM_EXCLUDE_DYNAMIC_SECTIONS",
 	}
 
 	// Key order for display.
@@ -394,6 +404,12 @@ func ConfigShowCmd(opts ConfigShowOptions, w io.Writer) error {
 		"haiku_model",
 		"permission_mode",
 		"debug",
+		"proxy_enabled",
+		"proxy_idle_timeout",
+		"proxy_port",
+		"effort",
+		"system_prompt",
+		"exclude_dynamic_sections",
 		"zai_base_url",
 		"zai_api_timeout_ms",
 		"subagent_dir",
@@ -433,7 +449,7 @@ func ConfigShowCmd(opts ConfigShowOptions, w io.Writer) error {
 	return nil
 }
 
-// parseTOMLToMap parses a simple TOML file into a key→value map.
+// parseTOMLToMap parses a simple TOML file into a key->value map.
 func parseTOMLToMap(data string) map[string]string {
 	result := map[string]string{}
 	for line := range strings.SplitSeq(data, "\n") {
@@ -461,6 +477,12 @@ var KnownConfigKeys = []string{
 	"haiku_model",
 	"permission_mode",
 	"debug",
+	"proxy_enabled",
+	"proxy_idle_timeout",
+	"proxy_port",
+	"effort",
+	"system_prompt",
+	"exclude_dynamic_sections",
 }
 
 // ConfigSetOptions provides testable inputs for the config set command.
@@ -515,10 +537,15 @@ func validateConfigValue(key, value string) error {
 		if !validModes[value] {
 			return fmt.Errorf("err:user \"Invalid value for permission_mode: %s (must be one of: bypassPermissions, acceptEdits, default, plan)\"", value)
 		}
-	case "debug":
+	case "debug", "proxy_enabled", "exclude_dynamic_sections":
 		lower := strings.ToLower(value)
 		if lower != "true" && lower != "false" && lower != "1" && lower != "0" {
-			return fmt.Errorf("err:user \"Invalid value for debug: %s (must be true or false)\"", value)
+			return fmt.Errorf("err:user \"Invalid value for %s: %s (must be true or false)\"", key, value)
+		}
+	case "proxy_port", "proxy_idle_timeout":
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 0 {
+			return fmt.Errorf("err:user \"Invalid value for %s: %s (must be a non-negative integer)\"", key, value)
 		}
 	}
 	return nil
@@ -561,11 +588,18 @@ func setTOMLKey(existing, key, value string) string {
 // formatTOMLValue formats a value for TOML output based on the key type.
 func formatTOMLValue(key, value string) string {
 	switch key {
-	case "debug":
-		// Boolean — no quotes.
+	case "debug", "proxy_enabled", "exclude_dynamic_sections":
+		// Booleans - no quotes, normalized to true/false.
+		lower := strings.ToLower(value)
+		if lower == "1" || lower == "true" {
+			return "true"
+		}
+		return "false"
+	case "proxy_port", "proxy_idle_timeout":
+		// Integers - no quotes.
 		return value
 	default:
-		// String values — quoted.
+		// String values - quoted.
 		return fmt.Sprintf("%q", value)
 	}
 }

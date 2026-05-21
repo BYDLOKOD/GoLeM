@@ -53,7 +53,7 @@ fi
 
 # After install.sh: glm should be on PATH (via go install -> $GOPATH/bin)
 step "glm on PATH"            command -v glm
-step "glm version is 1.2.0"   bash -c 'glm version | grep -q "glm 1.2.0"'
+step "glm version is 1.2.2"   bash -c 'glm version | grep -q "glm 1.2.2"'
 step "doctor 7 OKs"           bash -c 'test "$(glm doctor | grep -c -E "^[a-z_]+ +(OK|WARN)")" -eq 7'
 step "settings.json has golem entry" bash -c 'grep -q golem "$HOME/.claude/settings.json"'
 step "CLAUDE.md has markers"  bash -c 'grep -q "GLM-SUBAGENT-START" "$HOME/.claude/CLAUDE.md"'

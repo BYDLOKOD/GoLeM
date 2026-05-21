@@ -45,6 +45,11 @@ your Z.AI Coding Plan. Linux, macOS, WSL.
 # 1. Install (needs Go 1.25+ and the Claude Code CLI on PATH)
 go install github.com/veschin/GoLeM/cmd/glm@latest
 
+# If `glm version` reports a version older than the latest release, the Go
+# module proxy has not refreshed its @latest pointer yet (happens for a few
+# hours after each new tag). Pin explicitly:
+#   go install github.com/veschin/GoLeM/cmd/glm@v1.2.2
+
 # Make sure $(go env GOPATH)/bin is on your PATH. If `glm` is not found after
 # install, add: export PATH="$(go env GOPATH)/bin:$PATH"
 

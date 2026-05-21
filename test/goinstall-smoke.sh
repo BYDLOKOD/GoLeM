@@ -28,18 +28,34 @@ if [ ! -f "$HOME/.config/GoLeM/zai_api_key" ]; then
     exit 2
 fi
 
-# 1. go install @latest - the line copied from the README TL;DR.
-echo "=== go install ...@latest ==="
+# 1. Two-step install.
+# First try @latest (the README TL;DR command). The Go module proxy
+# refreshes its @latest pointer asynchronously after a new tag is pushed;
+# for hours after a release the proxy may still resolve @latest to the
+# previous tag. Verify the binary's version constant matches v1.2.2; if
+# not, fall back to an explicit version pin so the rest of the suite
+# exercises the new binary.
+echo "=== go install @latest (preferred path) ==="
 go install github.com/veschin/GoLeM/cmd/glm@latest > /tmp/goinstall.log 2>&1
 rc=$?
-if [ "$rc" -eq 0 ]; then
-    PASS=$((PASS + 1))
-    echo "OK  go install completed"
-else
+if [ "$rc" -ne 0 ]; then
     FAIL=$((FAIL + 1))
-    FAILED+=("go install failed (rc=$rc)")
+    FAILED+=("go install @latest failed (rc=$rc)")
     cat /tmp/goinstall.log
 fi
+actual="$(glm version 2>/dev/null | awk '{print $2}')"
+if [ "$actual" != "1.2.2" ]; then
+    echo "@latest resolved to $actual; pinning to v1.2.2 explicitly"
+    go install github.com/veschin/GoLeM/cmd/glm@v1.2.2 > /tmp/goinstall.log 2>&1
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        FAIL=$((FAIL + 1))
+        FAILED+=("go install @v1.2.2 failed (rc=$rc)")
+        cat /tmp/goinstall.log
+    fi
+fi
+PASS=$((PASS + 1))
+echo "OK  go install completed (version=$(glm version 2>/dev/null | awk '{print $2}'))"
 
 # 2. Sanity: glm is on PATH and reports the new version.
 step "glm on PATH"                   command -v glm

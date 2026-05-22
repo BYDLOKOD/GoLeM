@@ -93,13 +93,13 @@ func errSignal(_ int, _ os.Signal) error { return fmt.Errorf("no such process") 
 // noopSleep is a sleep function that does nothing.
 func noopSleep() {}
 
-// ---------- AC1: glm list — tabular output ----------
+// ---------- AC1: glm list - tabular output ----------
 
 func TestListShowsAllJobsInTabularFormatSortedByStartTime(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 
-	// Seed: list_output.json scenario — 5 jobs
+	// Seed: list_output.json scenario - 5 jobs
 	makeJobWithStarted(t, root, "job-20260227-103000-a3b4c5d6", "queued", "")
 	makeJobWithStarted(t, root, "job-20260227-102000-c9d0e1f2", "failed", "2026-02-27T10:20:00+03:00")
 	makeJobWithStarted(t, root, "job-20260227-101500-e5f6a7b8", "running", "2026-02-27T10:15:00+03:00")
@@ -262,7 +262,7 @@ func TestEmptyJobListPrintsNothing(t *testing.T) {
 	}
 }
 
-// ---------- AC5: glm log — print changelog ----------
+// ---------- AC5: glm log - print changelog ----------
 
 func TestLogPrintsChangelogContents(t *testing.T) {
 	t.Parallel()
@@ -328,7 +328,7 @@ func TestLogOnNonExistentJobReturnsNotFound(t *testing.T) {
 	}
 }
 
-// ---------- AC7: glm clean — remove terminal jobs ----------
+// ---------- AC7: glm clean - remove terminal jobs ----------
 
 func TestCleanWithoutFlagsRemovesTerminalStatusJobs(t *testing.T) {
 	t.Parallel()
@@ -374,6 +374,55 @@ func TestCleanWithoutFlagsRemovesTerminalStatusJobs(t *testing.T) {
 				t.Errorf("job %q (status=%q) should be removed but still exists", e.jobID, e.status)
 			}
 		}
+	}
+}
+
+// TestCleanRemovesProjectScopedTerminalJobs guards the production storage
+// layout: jobs live at root/<projectID>/<jobID>/, not flat at root/<jobID>/.
+// CleanCmd must descend one level into project directories.
+func TestCleanRemovesProjectScopedTerminalJobs(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	now := time.Now()
+
+	projectID := "myproj-123456"
+	doneJob := makeJobInProject(t, root, projectID, "job-20260225-140000-aabb1122", "done")
+	runningJob := makeJobInProject(t, root, projectID, "job-20260227-101500-e5f6a7b8", "running")
+
+	var buf bytes.Buffer
+	if err := cmd.CleanCmd(root, -1, now, &buf); err != nil {
+		t.Fatalf("CleanCmd error: %v", err)
+	}
+
+	if got := strings.TrimSpace(buf.String()); got != "Cleaned 1 jobs" {
+		t.Errorf("CleanCmd output: got %q, want %q", got, "Cleaned 1 jobs")
+	}
+	if _, err := os.Stat(doneJob); err == nil {
+		t.Errorf("project-scoped done job should be removed but still exists")
+	}
+	if _, err := os.Stat(runningJob); err != nil {
+		t.Errorf("project-scoped running job should be kept but was removed: %v", err)
+	}
+}
+
+// TestCleanRemovesEmptiedProjectDir verifies that a project directory left
+// empty after all its jobs are cleaned is itself removed, so orphan project
+// directories do not accumulate over time.
+func TestCleanRemovesEmptiedProjectDir(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	now := time.Now()
+
+	projectID := "emptyproj-999"
+	makeJobInProject(t, root, projectID, "job-20260225-140000-aabb1122", "done")
+
+	var buf bytes.Buffer
+	if err := cmd.CleanCmd(root, -1, now, &buf); err != nil {
+		t.Fatalf("CleanCmd error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, projectID)); err == nil {
+		t.Errorf("project dir emptied by clean should be removed but still exists")
 	}
 }
 
@@ -501,7 +550,7 @@ func TestCleanWithInvalidDaysValueReturnsError(t *testing.T) {
 	// days = -2 is used as sentinel for "invalid days string" scenario.
 	// The caller layer (CLI parsing) validates and passes -2 to indicate invalid.
 	// Here we test that CleanCmd rejects a non-negative but programmatically
-	// injected invalid value. Per BDD: "glm clean --days abc" → err:user, exit 1.
+	// injected invalid value. Per BDD: "glm clean --days abc" -> err:user, exit 1.
 	//
 	// Since CleanCmd takes an int, invalid string parsing happens at the CLI layer.
 	// We test the boundary the CLI layer enforces: days value < -1 means invalid.
@@ -534,7 +583,7 @@ func TestCleanWithNegativeDaysValueReturnsError(t *testing.T) {
 	}
 }
 
-// ---------- AC11: glm kill — terminate running job ----------
+// ---------- AC11: glm kill - terminate running job ----------
 
 func TestKillSendsSIGTERMThenSIGKILLToProcessGroup(t *testing.T) {
 	t.Parallel()
@@ -659,7 +708,7 @@ func TestKillOnNonRunningJobReturnsError(t *testing.T) {
 	root := t.TempDir()
 	jobID := "job-20260227-100000-a1b2c3d4"
 
-	// Seed: kill_not_running.json — status "done"
+	// Seed: kill_not_running.json - status "done"
 	makeJob(t, root, jobID, "done")
 
 	err := cmd.KillCmd(root, "", jobID, noopSignal, noopSleep)
@@ -775,7 +824,7 @@ func TestKillOnJobWhoseProcessAlreadyDied(t *testing.T) {
 	dir := makeJob(t, root, jobID, "running")
 	makePidFile(t, dir, 51203)
 
-	// Signal always fails — process already dead
+	// Signal always fails - process already dead
 	if err := cmd.KillCmd(root, "", jobID, errSignal, noopSleep); err != nil {
 		t.Errorf("KillCmd on already-dead process returned error: %v", err)
 	}

@@ -33,9 +33,16 @@ type healthResponse struct {
 // the proxy waits before shutting itself down when idle. Concurrency is controlled
 // exclusively via per-model limits in the [models] TOML section; no global limit is applied.
 //
+// port is the TCP port the daemon binds: 0 lets the OS pick a free port (the
+// default), while a fixed non-zero port (proxy_port in glm.toml) makes every
+// restart rebind the same port. That stability matters because a long-lived
+// caller (e.g. the MCP server) caches the proxy URL once; with an ephemeral
+// port, the daemon dying on idle timeout and respawning elsewhere leaves the
+// cached URL pointing at a dead port (ConnectionRefused).
+//
 // A file-based flock around the check-and-spawn sequence prevents concurrent callers
 // from spawning duplicate proxy instances (TOCTOU race).
-func EnsureRunning(glmBinary, configDir, targetURL string, idleTimeout time.Duration) (int, error) {
+func EnsureRunning(glmBinary, configDir, targetURL string, port int, idleTimeout time.Duration) (int, error) {
 	// Acquire exclusive flock to serialize the IsRunning check + spawn.
 	lockPath := filepath.Join(configDir, lockFile)
 	lk, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
@@ -49,7 +56,7 @@ func EnsureRunning(glmBinary, configDir, targetURL string, idleTimeout time.Dura
 	}
 	defer func() { _ = syscall.Flock(int(lk.Fd()), syscall.LOCK_UN) }()
 
-	// Re-check under lock — another caller may have started the proxy already.
+	// Re-check under lock - another caller may have started the proxy already.
 	if port, alive := IsRunning(configDir); alive {
 		return port, nil
 	}
@@ -62,14 +69,7 @@ func EnsureRunning(glmBinary, configDir, targetURL string, idleTimeout time.Dura
 	}
 	defer func() { _ = lf.Close() }()
 
-	cmd := exec.Command(
-		glmBinary,
-		"_proxy",
-		"--port", "0",
-		"--idle-timeout", strconv.Itoa(int(idleTimeout.Seconds())),
-		"--target", targetURL,
-		"--config-dir", configDir,
-	)
+	cmd := exec.Command(glmBinary, proxyDaemonArgs(configDir, targetURL, port, idleTimeout)...)
 	cmd.Stdout = lf
 	cmd.Stderr = lf
 	// Detach the proxy into its own process group so it survives the parent.
@@ -79,12 +79,28 @@ func EnsureRunning(glmBinary, configDir, targetURL string, idleTimeout time.Dura
 		return 0, fmt.Errorf("proxy: start daemon: %w", err)
 	}
 
-	// Poll /health until the proxy is ready, up to 5 seconds.
-	port, err := waitHealthy(configDir, 5*time.Second, 100*time.Millisecond)
+	// Poll /health until the proxy is ready, up to 5 seconds. The bound port may
+	// differ from the requested one only when port == 0 (OS-assigned); for a
+	// fixed port the daemon rebinds the same value.
+	boundPort, err := waitHealthy(configDir, 5*time.Second, 100*time.Millisecond)
 	if err != nil {
 		return 0, fmt.Errorf("proxy: daemon did not become healthy: %w", err)
 	}
-	return port, nil
+	return boundPort, nil
+}
+
+// proxyDaemonArgs builds the argument list for spawning the proxy daemon
+// (`glm _proxy ...`). port is the TCP port to bind: 0 lets the OS choose a free
+// port; a fixed non-zero port makes the daemon rebind the same port on every
+// restart so a cached proxy URL keeps working.
+func proxyDaemonArgs(configDir, targetURL string, port int, idleTimeout time.Duration) []string {
+	return []string{
+		"_proxy",
+		"--port", strconv.Itoa(port),
+		"--idle-timeout", strconv.Itoa(int(idleTimeout.Seconds())),
+		"--target", targetURL,
+		"--config-dir", configDir,
+	}
 }
 
 // IsRunning checks whether the proxy daemon is alive by inspecting the PID and
@@ -182,7 +198,7 @@ func Stop(configDir string) error {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	// Still alive — force kill.
+	// Still alive - force kill.
 	if err := proc.Signal(syscall.SIGKILL); err != nil && err.Error() != "os: process already finished" {
 		return fmt.Errorf("proxy: SIGKILL: %w", err)
 	}

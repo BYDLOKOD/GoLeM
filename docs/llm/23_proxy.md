@@ -20,12 +20,16 @@ share one proxy instance via PID/port files in `configDir`.
 
 ## Lifecycle (`internal/proxy/lifecycle.go`)
 
-`EnsureRunning(glmBinary, configDir, targetURL, idleTimeout)`:
+`EnsureRunning(glmBinary, configDir, targetURL, port, idleTimeout)`:
 1. Acquires exclusive flock on `configDir/proxy.lock` (TOCTOU guard).
 2. Calls `IsRunning(configDir)` - if alive, returns existing port.
-3. Spawns `glm _proxy --port 0 --idle-timeout N --target URL --config-dir D`
+3. Spawns `glm _proxy --port P --idle-timeout N --target URL --config-dir D`
    as a detached process (`Setpgid: true`), writing output to
-   `configDir/proxy.log`.
+   `configDir/proxy.log`. P is `cfg.ProxyPort` (`proxy_port` in glm.toml),
+   built by the `proxyDaemonArgs` helper: `0` (default) lets the OS pick a free
+   port; a fixed non-zero port makes every daemon restart rebind the same port,
+   so a long-lived caller's cached proxy URL survives an idle-timeout restart
+   (see [devlog/01_devlog_proxy_stale_port.md](devlog/01_devlog_proxy_stale_port.md)).
 4. Polls until `configDir/proxy.port` is written and `/health` returns 200
    (up to 5 s total, 100 ms interval).
 

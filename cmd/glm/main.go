@@ -1255,7 +1255,7 @@ func ensureProxy(cfg *config.Config) {
 	if realBin, evalErr := filepath.EvalSymlinks(glmBin); evalErr == nil {
 		glmBin = realBin
 	}
-	proxyPort, err := proxy.EnsureRunning(glmBin, cfg.ConfigDir, cfg.ZaiBaseURL, time.Duration(cfg.ProxyIdleTimeout)*time.Second)
+	proxyPort, err := proxy.EnsureRunning(glmBin, cfg.ConfigDir, cfg.ZaiBaseURL, cfg.ProxyPort, time.Duration(cfg.ProxyIdleTimeout)*time.Second)
 	if err != nil {
 		logger.Warn("proxy: " + err.Error())
 		return

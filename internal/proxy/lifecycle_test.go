@@ -7,7 +7,48 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"time"
 )
+
+// flagValue returns the argument following flag in args, or "" if absent.
+func flagValue(args []string, flag string) string {
+	for i, a := range args {
+		if a == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+// TestProxyDaemonArgsHonorsConfiguredPort guards the stale-port fix: a fixed
+// proxy_port must flow through to the spawned daemon's --port flag (it used to
+// be hard-coded to 0, so a configured port was silently ignored and every
+// restart bound a new random port).
+func TestProxyDaemonArgsHonorsConfiguredPort(t *testing.T) {
+	args := proxyDaemonArgs("/cfg", "https://api.example/anthropic", 9999, 600*time.Second)
+
+	if got := flagValue(args, "--port"); got != "9999" {
+		t.Errorf("--port: got %q, want %q", got, "9999")
+	}
+	if got := flagValue(args, "--idle-timeout"); got != "600" {
+		t.Errorf("--idle-timeout: got %q, want %q", got, "600")
+	}
+	if got := flagValue(args, "--target"); got != "https://api.example/anthropic" {
+		t.Errorf("--target: got %q, want the upstream URL", got)
+	}
+	if got := flagValue(args, "--config-dir"); got != "/cfg" {
+		t.Errorf("--config-dir: got %q, want %q", got, "/cfg")
+	}
+}
+
+// TestProxyDaemonArgsZeroPortAutoSelects verifies the default (port 0) still
+// asks the OS to pick a free port, preserving prior behaviour.
+func TestProxyDaemonArgsZeroPortAutoSelects(t *testing.T) {
+	args := proxyDaemonArgs("/cfg", "url", 0, time.Second)
+	if got := flagValue(args, "--port"); got != "0" {
+		t.Errorf("--port for auto-select: got %q, want %q", got, "0")
+	}
+}
 
 // TestConcurrentEnsureRunningUsesFlockToPreventDuplicates verifies that the
 // flock in EnsureRunning serializes concurrent callers. We test the locking
@@ -44,7 +85,7 @@ func TestConcurrentEnsureRunningUsesFlockToPreventDuplicates(t *testing.T) {
 			}
 			defer func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }()
 
-			// Inside critical section — only one goroutine at a time.
+			// Inside critical section - only one goroutine at a time.
 			cur := atomic.AddInt64(&inFlight, 1)
 			if cur > 1 {
 				atomic.StoreInt64(&raceFound, 1)

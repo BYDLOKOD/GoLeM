@@ -76,6 +76,10 @@ See also: [handoff.md](handoff.md).
   codes and error categories (`internal/log/`, `internal/exitcode/`). Read
   before changing logging or error handling.
 
+- [90_lessons/01_claude_output_array.md](90_lessons/01_claude_output_array.md) -
+  post-mortem: a Claude Code output-shape change silently blanked golem output
+  (v1.4.0). Read before touching `claude --output-format json` parsing.
+
 ## Kinds
 
 | kind | Meaning |

@@ -123,6 +123,10 @@ project-scoped `subagentsDir/<project-id>/<job-id>` layout), and for each:
   + marker.
 - `running` + live PID -> counted as alive.
 
+A per-job error (e.g. a `queued` job whose `created_at.txt` is missing) is
+logged to stderr and skipped, never propagated -- one malformed job must not
+abort the sweep or corrupt the counter (it simply contributes 0).
+
 After scanning, writes the alive count to the `.running_count` slot counter
 file. The whole operation is protected by an exclusive flock on
 `subagentsDir/.reconcile.lock`.

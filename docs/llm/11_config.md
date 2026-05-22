@@ -47,12 +47,25 @@ Default paths: `configDir = ~/.config/GoLeM`, `subagentDir = ~/.claude/subagents
 | `permission_mode` | string | `bypassPermissions` | One of: `bypassPermissions`, `acceptEdits`, `default`, `plan`. |
 | `proxy_enabled` | bool | `true` | Start local rate-limiting proxy. |
 | `proxy_idle_timeout` | int | `600` | Proxy auto-shutdown after N seconds idle. |
-| `proxy_port` | int | `0` | Fixed proxy port; 0 = OS-assigned. |
+| `proxy_port` | int | `0` | Fixed proxy port; 0 = OS-assigned. A non-zero value is honored end-to-end (`EnsureRunning` passes it through to `glm _proxy --port`), so the daemon rebinds the same port across idle-timeout restarts and a long-lived caller's cached proxy URL stays valid. See [23_proxy.md](23_proxy.md). |
 | `system_prompt` | string | `""` | Default system prompt prepended to every invocation. |
 | `effort` | string | `""` | Passed as `--effort` to `claude` (e.g. `"max"`). |
 | `exclude_dynamic_sections` | bool | `false` | Passes `--exclude-dynamic-system-prompt-sections` to `claude`. |
+| `mcp_config` | string | `""` | Golem-scoped MCP servers (a file path or inline JSON) attached to every golem via `claude --mcp-config`; the host session is untouched. |
+| `mcp_strict` | bool | `false` | Adds `--strict-mcp-config` so golems use only `mcp_config` servers and ignore all other MCP configuration. |
+| `vision_mcp` | bool | `true` | Attach the built-in Z.AI image-vision MCP server to golems. On by default; set `false` to disable. |
 | `api_rps` | - | ignored | Silently ignored for backward compatibility. |
 | `max_parallel` | - | ignored | Silently ignored for backward compatibility. |
+
+### Golem-scoped MCP servers
+
+`mcp_config`, `mcp_strict`, and `vision_mcp` add MCP servers to each golem's
+`claude` subprocess only -- they never modify `~/.claude/settings.json` (that
+file holds the host's `golem` MCP server, a separate concern; see
+[10_cli.md](10_cli.md)). The `glm` CLI also accepts `--mcp-config FILE`
+per-call, which overrides the config default. When `vision_mcp` is on,
+`WriteVisionMCPConfig` generates `~/.config/GoLeM/golem-vision-mcp.json`
+(API key filled in, mode 0600) and passes its path; see [20_claude_execution.md](20_claude_execution.md).
 
 Note: `debug` is not a TOML key. It is settable only via the `GLM_DEBUG`
 environment variable or `glm config set debug true`. The TOML parser
@@ -131,6 +144,9 @@ whitespace trimmed. Returns `err:config` if the file is missing or unreadable.
 | `GLM_SYSTEM_PROMPT` | `SystemPrompt` field. |
 | `GLM_EXCLUDE_DYNAMIC_SECTIONS` | `true` or `1`. |
 | `GLM_MODEL_CONCURRENCY` | Format: `"model1:N,model2:M"`. |
+| `GLM_MCP_CONFIG` | `MCPConfig` (path or inline JSON). |
+| `GLM_MCP_STRICT` | `true` or `1` enables `--strict-mcp-config`. |
+| `GLM_VISION_MCP` | `true`/`1` or `false`/`0` toggles the built-in vision MCP. |
 | `GLM_LOG_FORMAT` | `"json"` switches logger to JSON. |
 | `GLM_LOG_FILE` | Path to append log output. |
 
@@ -152,6 +168,12 @@ are recognized; any other `[section]` header resets the parser to the global
 key context. Unknown top-level keys fall through the `parseGlobalKey` switch
 with no side effect (`config.go:263`).
 
+Surrounding quotes are stripped by `trimMatchedQuotes`, which removes exactly
+one matching leading+trailing pair (single or double); a value with interior
+quotes (e.g. `"say \"hi\""`) keeps them. This is deliberately minimal -- the
+parser is line-based and does NOT support backslash escapes or triple-quoted
+multiline strings (the zero-dependency rule precludes a real TOML library).
+
 ## Validation rules
 
 `permission_mode` must be one of: `bypassPermissions`, `acceptEdits`,
@@ -160,10 +182,15 @@ with no side effect (`config.go:263`).
 ## `config set` constraints
 
 `glm config set KEY VALUE` validates the key against `KnownConfigKeys`
-(`internal/cmd/doctor.go:457-464`). Accepted keys:
+(`internal/cmd/doctor.go:473`, twelve keys). Accepted keys:
 
 - `model`, `opus_model`, `sonnet_model`, `haiku_model` -- any non-empty string.
 - `permission_mode` -- must be one of the four valid modes listed above.
-- `debug` -- must be `true`, `false`, `1`, or `0` (`doctor.go:518-522`).
+- `debug` -- must be `true`, `false`, `1`, or `0`.
+- `proxy_enabled`, `exclude_dynamic_sections` -- boolean.
+- `proxy_idle_timeout`, `proxy_port` -- integer.
+- `effort`, `system_prompt` -- any string.
 
-Unknown keys produce `err:user`.
+Unknown keys produce `err:user`. Note that the MCP keys (`mcp_config`,
+`mcp_strict`, `vision_mcp`) are not in `KnownConfigKeys`; set them by editing
+`glm.toml` or via their `GLM_*` environment variables.

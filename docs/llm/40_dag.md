@@ -99,7 +99,11 @@ dependents' in-degrees are decremented. A dependent is launched when its
 in-degree reaches 0 and no dependency has failed.
 
 A `chan struct{}` semaphore of size `maxConcurrent` bounds parallel execution
-(nil when unlimited).
+(nil when unlimited). The `completions` channel is buffered to the step count
+(not `maxConcurrent`): each step sends exactly one completion, so a sender
+never blocks even after the coordinator returns early on context cancellation.
+Sizing it to `maxConcurrent` would strand semaphore-blocked goroutines on their
+send and leak them.
 
 ## Failure propagation
 

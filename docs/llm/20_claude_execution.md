@@ -54,6 +54,25 @@ Conditional:
 | `cfg.ExcludeDynamicSections` | `--exclude-dynamic-system-prompt-sections` |
 | `cfg.PermissionMode == "bypassPermissions"` | `--dangerously-skip-permissions` |
 | `cfg.PermissionMode != "" && != "bypassPermissions"` | `--permission-mode <mode>` |
+| `cfg.VisionMCPConfig != ""` | `--mcp-config <vision-path>` (first) |
+| `cfg.MCPConfig != ""` | `--mcp-config <value>` |
+| `hasMCPConfig(cfg) && cfg.MCPStrict` | `--strict-mcp-config` |
+
+### Golem-scoped MCP servers (`MCPConfig`, `VisionMCPConfig`, `MCPStrict`)
+
+These attach MCP servers to the golem's `claude` subprocess only -- the host
+`~/.claude/settings.json` is never touched. `mcpConfigValues(cfg)` returns the
+ordered list (the built-in vision config first, then any user-supplied
+`MCPConfig`), and `BuildFlags` emits one `--mcp-config` flag per value; `claude`
+accumulates repeated flags. `MCPConfig` accepts a file path or inline JSON.
+`MCPStrict` adds `--strict-mcp-config` so the golem ignores all other MCP
+configuration.
+
+`VisionMCPConfig` is a *path*, not a toggle. The toggle is `config.VisionMCP`
+(default on); `internal/cmd/execute.go` and `session.go` call
+`WriteVisionMCPConfig(configDir, apiKey)` (`internal/cmd/vision.go`) to generate
+`~/.config/GoLeM/golem-vision-mcp.json` (Z.AI vision server, API key filled in,
+mode 0600, written atomically) and pass its path here. See [11_config.md](11_config.md).
 
 ## Execute
 
@@ -71,7 +90,10 @@ Steps:
 5. Creates a `context.WithTimeout` derived from `parent` using
    `cfg.TimeoutSecs` (default 600 s when <= 0).
 6. Runs `claude <flags> <prompt>` with `Setpgid: true` so the whole process
-   group can be killed.
+   group can be killed. When any MCP config is attached (`hasMCPConfig(cfg)`),
+   a `--` separator is inserted before the prompt (`claude.go:210-211`):
+   `claude`'s `--mcp-config` is variadic and would otherwise swallow the
+   positional prompt as another config value.
 7. Waits on a goroutine or context cancellation.
 8. On timeout: `syscall.Kill(-pid, SIGKILL)` then waits for exit.
 9. Writes `finished_at.txt`, `raw.json` (stdout), `stderr.txt`.
@@ -81,30 +103,34 @@ Steps:
     `JobTimeout` after completion.
 12. Writes `exit_code.txt` only when exit code != 0.
 
-## Output parsing (`ParseRawJSON`)
+## Output parsing (`ParseRawJSON` / `extractResult`)
 
-`claude --output-format json` writes a JSON object to stdout. The top-level
-structure is:
+`claude --output-format json` emits **two shapes** depending on the Claude Code
+version. `extractResult(data)` (`parser.go:97`) handles both by sniffing the
+first non-space byte; a Claude Code update flipping the shape no longer silently
+blanks the golem's output (see [90_lessons/01_claude_output_array.md](90_lessons/01_claude_output_array.md)).
+
+**Array form** (current, claude 2.1+) -- a stream of typed events:
 
 ```json
-{
-  "result": "<text output>",
-  "messages": [
-    {
-      "role": "assistant",
-      "content": [
-        {"type": "tool_use", "name": "Edit", "input": {...}},
-        ...
-      ]
-    }
-  ]
-}
+[
+  {"type": "system",    "...": "..."},
+  {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Edit", "input": {}}]}},
+  {"type": "result",    "result": "<text output>"}
+]
 ```
+
+The final text is the `result` field of the `type == "result"` event; tool_use
+blocks live under `message.content` of `type == "assistant"` events.
+
+**Legacy object form** -- a single object with top-level `result` and
+`messages[].content[]`. Parsed into `rawOutput`.
 
 `ParseRawJSON(jobDir)`:
 1. Reads `raw.json`.
-2. Writes `stdout.txt` from `result` field.
-3. Collects all `type == "tool_use"` content blocks across all messages.
+2. `extractResult` returns `(result, toolUses, err)`, transparently handling
+   either shape.
+3. Writes `stdout.txt` from `result`.
 4. Calls `GenerateChangelog(jobDir, toolUses)`.
 
 On malformed JSON: writes empty `stdout.txt`, calls `GenerateChangelog` with

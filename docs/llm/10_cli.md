@@ -15,6 +15,14 @@ returned integer. `run()` switches on `args[0]` (the subcommand) and
 delegates to a `cmd*` function. No CLI framework is used; all parsing is
 hand-written.
 
+Global flags placed *before* the subcommand are tolerated: `reorderSubcommand`
+(`main.go:151`) scans for the first non-flag token, treats it as the
+subcommand, and folds the leading flags into its argument list -- so both
+`glm session --opus M` and `glm --opus M session` work. It uses a `valueFlags`
+set (`--model`, `--opus`, `--mcp-config`, ...) to know which flags consume the
+next token. When no subcommand can be located, the error hints that flags go
+after the command.
+
 ## Subcommands
 
 | Subcommand | Function | Description |
@@ -72,7 +80,9 @@ args after all flags are joined and become the prompt.
 is printed before the job list with proxy statistics fetched from
 `/health`: `active`, `queued`, `total`, `uptime` (`main.go:543-561`).
 
-`clean` accepts `--days N` (remove jobs older than N days).
+`clean` accepts `--days N` (remove jobs older than N days). It walks both the
+flat and project-scoped (`<project-id>/<job-id>/`) layouts and removes a
+project directory once cleaning has emptied it.
 
 `pipeline` accepts `--system-prompt TEXT` and `--constraint KEY`.
 
@@ -126,7 +136,9 @@ Populated by `cmd.LogJSON` (`json.go:321-345`).
 ### `status --json`
 
 Emits a `JobStatusJSON` object (`json.go:26-31`): `id`, `status`, `pid`,
-`started_at`.
+`started_at`. If the on-disk status is `running` but the PID is no longer
+alive, it is reconciled to `failed` (via `job.CheckJobPID`) before the object
+is emitted -- a crashed job is never reported as still running.
 
 ### `list --json`
 
@@ -161,7 +173,9 @@ replace the current process with `claude` (no job directory is created).
 
 1. **claude_cli** -- `claude` binary found in PATH and version queried.
 2. **api_key** -- API key file exists and is non-empty.
-3. **zai_reachable** -- HEAD request to `ZaiBaseURL` succeeds within timeout.
+3. **zai_reachable** -- HEAD request to `ZaiBaseURL`; any completed HTTP
+   response counts as reachable (a 4xx for an unauthenticated HEAD is expected
+   and not a connectivity problem). Only a connection-level error is `FAIL`.
 4. **models** -- Reports configured opus/sonnet/haiku model names.
 5. **slots** -- Counts running jobs under `SubagentDir`.
 6. **platform** -- `GOOS/GOARCH`.

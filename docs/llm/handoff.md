@@ -3,17 +3,16 @@ id: handoff
 kind: guide
 ---
 
-# Handoff - correctness fix session (6 fixes on v1.5.0)
+# Handoff - correctness fix session shipped as v1.5.1
 
 See also: [00_index.md](00_index.md) · [23_proxy.md](23_proxy.md) · [11_config.md](11_config.md).
 
 ## Current state
 
-Branch: `main`. Version constant `version = "1.5.0"` (`cmd/glm/main.go:32`).
-A v1.5.1 patch tag is warranted for the fixes below but was not cut (cutting a
-release is the owner's call).
+Branch: `main`. Version `version = "1.5.1"` (`cmd/glm/main.go:32`), tagged and
+released.
 
-This session shipped **six correctness fixes**, each TDD (failing test first,
+This session shipped **nine correctness fixes**, each TDD (failing test first,
 then fix), verified together:
 
 ```
@@ -23,22 +22,25 @@ go test ./...          # all 18 packages ok
 go test -race ./...    # exit 0, no data races
 ```
 
-An opus critic reviewed the full diff against executing code: all six correct,
-no regressions.
+Two critic rounds (opus on the first five fixes, sonnet on the last three)
+reviewed the full diff against executing code: all correct, no regressions.
 
 | Fix | File | What was wrong |
 |-----|------|----------------|
-| 1 | `internal/cmd/json.go` | `status --json` reported a dead "running" job as running forever (reconcile was gated on a `Contains(jobID,"dead")` test marker). Now checks PID liveness. |
-| 2 | `internal/cmd/clean.go` | `clean` only walked the flat layout, so project-scoped jobs (`<projectID>/<jobID>/`, the production layout) were never removed. Now walks both, and drops emptied project dirs. |
-| 3 | `internal/job/reconcile.go` | One malformed job aborted the whole reconciliation sweep and left the slot counter wrong. Now logs per-job and continues. |
-| 4 | `internal/dag/scheduler.go` | Goroutine leak on context cancellation with a bounded scheduler (completion buffer undersized). Buffer now sized to the step count. |
-| 5 | `internal/dag/executor.go` | A gate step with no validate rule silently passed everything (nil-safe `Check`). Now returns an error. |
-| 6 | `internal/proxy/lifecycle.go` | `proxy_port` was ignored (`--port 0` hard-coded), so every daemon restart bound a new port - the stale-port `ConnectionRefused` root cause. Now honored end-to-end. |
+| 1 | `internal/cmd/json.go` | `status --json` reported a dead "running" job as running forever (reconcile gated on a `Contains(jobID,"dead")` test marker). Now checks PID liveness. |
+| 2 | `internal/cmd/clean.go` | `clean` only walked the flat layout, so project-scoped jobs (the production layout) were never removed. Now walks both and prunes emptied project dirs. |
+| 3 | `internal/job/reconcile.go` | One malformed job aborted the whole reconciliation sweep. Now logs per-job and continues. |
+| 4 | `internal/dag/scheduler.go` + `executor.go` | Goroutine leak on context cancellation (completion buffer undersized); a ruleless gate silently passed everything. Both fixed. |
+| 5 | `internal/proxy/lifecycle.go` | `proxy_port` ignored (`--port 0` hard-coded) - the stale-port `ConnectionRefused` root cause. Now honored end-to-end. |
+| 6 | `internal/cmd/doctor.go` | `doctor` reported a healthy API as unreachable (only 200 = OK). Any HTTP response now counts as reachable. |
+| 7 | `internal/config/config.go` | TOML quote stripping corrupted values with interior quotes. Now strips only a matched pair. |
+| 8 | `internal/cmd/execute.go` | Final status written non-atomically (partial-read race for `status --json`). Now atomic. |
 
-Three uncommitted doc edits were present at session start and were left
-untouched: `docs/llm/10_cli.md`, `11_config.md`, `20_claude_execution.md`.
-Because of that, the CLI/config specs covering the user-facing behavior of
-fixes 1, 2 and 6 were NOT refreshed here - update them when those edits land.
+(Fix 4 bundles the two `internal/dag` fixes; fix 8 is the atomic-write
+hardening.) All docs were refreshed to match: the specs above, the new
+`90_lessons/01_claude_output_array.md`, and this session's
+`devlog/02_devlog_fix_session.md`. The owner's in-flight edits to
+`10_cli`/`11_config`/`20_claude_execution` were integrated.
 
 ## Main finding: proxy stale-port bug (root cause now fixed - see fix 6)
 

@@ -156,8 +156,8 @@ func parseTOML(data string, cfg *Config) error {
 		}
 		key := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
-		// Trim quotes from value (both single and double)
-		value = strings.Trim(value, `"'`)
+		// Remove one matching pair of surrounding quotes (single or double).
+		value = trimMatchedQuotes(value)
 
 		switch section {
 		case "routing":
@@ -175,6 +175,23 @@ func parseTOML(data string, cfg *Config) error {
 		}
 	}
 	return nil
+}
+
+// trimMatchedQuotes removes one matching pair of surrounding single or double
+// quotes from s, if present. Unlike strings.Trim with a cutset, it does not
+// strip mismatched or interior quote characters, so a value that legitimately
+// contains a quote is preserved. This is a deliberate minimal nicety, not full
+// TOML string parsing: backslash escapes and triple-quoted multiline strings
+// remain unsupported (the zero-dependency constraint rules out a real TOML
+// library; see CLAUDE.md).
+func trimMatchedQuotes(s string) string {
+	if len(s) >= 2 {
+		q := s[0]
+		if (q == '"' || q == '\'') && s[len(s)-1] == q {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
 }
 
 // parseRoutingKey handles keys within the [routing] TOML section.
@@ -199,8 +216,9 @@ func parseRoutingKey(key, value string, cfg *Config) error {
 // Each key is a model name (optionally quoted) and value is an integer
 // concurrency limit.
 func parseModelsKey(key, value string, cfg *Config) error {
-	// Strip quotes from model name key (TOML allows "model.name" = N).
-	key = strings.Trim(key, `"'`)
+	// Strip a surrounding quote pair from the model-name key (TOML allows
+	// "model.name" = N).
+	key = trimMatchedQuotes(key)
 	n, err := strconv.Atoi(value)
 	if err != nil {
 		return fmt.Errorf("err:config \"Failed to parse glm.toml: invalid concurrency value '%s' for model '%s'\"", value, key)

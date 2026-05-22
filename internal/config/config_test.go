@@ -1305,6 +1305,24 @@ func TestSystemPromptMultiline(t *testing.T) {
 	}
 }
 
+// TestParseTOMLPreservesInteriorQuote verifies that only one matching pair of
+// surrounding quotes is stripped from a value -- interior quote characters are
+// kept. The old strings.Trim(cutset) approach stripped every trailing quote,
+// corrupting such values.
+func TestParseTOMLPreservesInteriorQuote(t *testing.T) {
+	toml := "system_prompt = \"say \\\"hi\\\"\"\n"
+	cfg := &Config{}
+	if err := parseTOML(toml, cfg); err != nil {
+		t.Fatalf("parseTOML: %v", err)
+	}
+	// Only the outer pair is removed; the parser does not process backslash
+	// escapes, so the interior characters survive verbatim.
+	want := "say \\\"hi\\\""
+	if cfg.SystemPrompt != want {
+		t.Errorf("SystemPrompt = %q, want %q", cfg.SystemPrompt, want)
+	}
+}
+
 // ---- compile-time check: verify fmt and strconv imports are used ----
 var _ = fmt.Sprintf
 var _ = strconv.Itoa

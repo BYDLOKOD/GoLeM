@@ -160,6 +160,12 @@ func applyValidation(step Step, stdout string) error {
 // running validation against it. Gate steps pass through their input artifacts
 // unchanged when validation succeeds.
 func (e *ClaudeStepExecutor) executeGate(step Step, inputs []*artifact.Artifact) ([]*artifact.Artifact, error) {
+	// A gate with no rule cannot validate anything; refuse it rather than
+	// silently passing every input through (ValidationRule.Check is nil-safe
+	// and would otherwise report success).
+	if step.Validate == nil {
+		return nil, fmt.Errorf("err:dag gate step %q has no validate rule", step.ID)
+	}
 	var combined string
 	for _, inp := range inputs {
 		combined += string(inp.Content)

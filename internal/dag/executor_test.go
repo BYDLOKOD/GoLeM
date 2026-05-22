@@ -1,6 +1,7 @@
 package dag
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,18 @@ import (
 	"github.com/veschin/GoLeM/internal/artifact"
 	"github.com/veschin/GoLeM/internal/validation"
 )
+
+// TestExecuteGateWithoutValidateRuleReturnsError guards the gate executor
+// against a nil Validate rule. DAG.Validate() rejects such gates, but a caller
+// invoking Execute directly (bypassing validation) must get a clean error
+// instead of a nil-pointer panic.
+func TestExecuteGateWithoutValidateRuleReturnsError(t *testing.T) {
+	e := NewClaudeStepExecutor(nil, t.TempDir(), t.TempDir(), "", 0, "")
+	_, err := e.Execute(context.Background(), Step{ID: "g", Type: "gate", DependsOn: []string{"x"}}, nil)
+	if err == nil {
+		t.Fatal("expected error for gate step without a validate rule, got nil")
+	}
+}
 
 func TestBuildInjectedPrompt_SingleInput(t *testing.T) {
 	inputs := []*artifact.Artifact{
@@ -413,7 +426,7 @@ func TestRetryLoop_NonValidationErrorNoRetry(t *testing.T) {
 // scratch directories must survive validation failure. The earlier code called
 // os.RemoveAll BEFORE running validation, which silently destroyed raw.json,
 // stderr.txt and other forensic artifacts the moment any Validate rule
-// rejected the output — making post-mortem debugging impossible.
+// rejected the output - making post-mortem debugging impossible.
 //
 // The test creates a fake claude that succeeds with output that the step's
 // Validate rule rejects, then asserts the jobDir still exists with claude's

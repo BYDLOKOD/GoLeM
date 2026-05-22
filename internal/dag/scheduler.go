@@ -85,18 +85,20 @@ func (s *Scheduler) Run(ctx context.Context, dag *DAG) (map[string][]*artifact.A
 	processed := 0
 
 	// Channel for step goroutines to report completion to the coordinator.
-	// Buffer must be at least 1 to avoid deadlock; use totalSteps when unlimited.
-	completionBuf := s.maxConcurrent
-	if completionBuf <= 0 {
-		completionBuf = totalSteps
-	}
+	// One slot per step: each step sends exactly one completion, so a sender
+	// never blocks even if the coordinator stops receiving early (e.g. on
+	// context cancellation). Sizing to maxConcurrent instead would strand the
+	// semaphore-blocked goroutines on their send and leak them. The semaphore
+	// (sem) bounds real parallelism; this buffer only guarantees a non-blocking
+	// handoff so every goroutine can exit.
+	completionBuf := totalSteps
 	if completionBuf < 1 {
 		completionBuf = 1
 	}
 	completions := make(chan stepCompletion, completionBuf)
 
 	// Semaphore channel to bound concurrent step execution.
-	// When maxConcurrent == 0, sem is nil (unlimited — no blocking).
+	// When maxConcurrent == 0, sem is nil (unlimited - no blocking).
 	var sem chan struct{}
 	if s.maxConcurrent > 0 {
 		sem = make(chan struct{}, s.maxConcurrent)

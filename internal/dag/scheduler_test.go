@@ -3,6 +3,7 @@ package dag
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -10,6 +11,72 @@ import (
 
 	"github.com/veschin/GoLeM/internal/artifact"
 )
+
+// blockingExecutor signals when a step starts and then blocks until the
+// context is cancelled. Used to position step goroutines so a cancellation
+// can strand any that are waiting on the concurrency semaphore.
+type blockingExecutor struct{ started chan struct{} }
+
+func (e *blockingExecutor) Execute(ctx context.Context, step Step, inputs []*artifact.Artifact) ([]*artifact.Artifact, error) {
+	e.started <- struct{}{}
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// TestScheduler_NoGoroutineLeakOnContextCancel ensures that cancelling the
+// context does not strand step goroutines blocked on the concurrency
+// semaphore. With maxConcurrent (1) far below the step count, all but one
+// step goroutine wait on the semaphore; if the completions channel is
+// undersized they can never send and leak. Not parallel: it samples the
+// process-wide goroutine count.
+func TestScheduler_NoGoroutineLeakOnContextCancel(t *testing.T) {
+	const steps = 6
+	d := &DAG{}
+	for i := 0; i < steps; i++ {
+		d.Steps = append(d.Steps, Step{ID: fmt.Sprintf("s%d", i), Prompt: "x"})
+	}
+
+	exec := &blockingExecutor{started: make(chan struct{}, steps)}
+	s := NewScheduler(exec, 1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	baseline := runtime.NumGoroutine()
+
+	done := make(chan struct{})
+	go func() {
+		_, _, _ = s.Run(ctx, d)
+		close(done)
+	}()
+
+	// Wait until one step is executing; the rest are semaphore-blocked.
+	select {
+	case <-exec.started:
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("no step started within 2s")
+	}
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return within 2s of cancellation")
+	}
+
+	// Every step goroutine must exit. Poll until the goroutine count settles
+	// back near the baseline; a leak holds it well above (steps-1 stranded).
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if n := runtime.NumGoroutine(); n <= baseline+2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("goroutine leak after cancel: %d goroutines, baseline %d", runtime.NumGoroutine(), baseline)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
 
 // stubExecutor is a test executor that records calls and returns canned artifacts.
 type stubExecutor struct {

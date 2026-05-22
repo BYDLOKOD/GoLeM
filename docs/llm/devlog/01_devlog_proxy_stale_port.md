@@ -92,6 +92,18 @@ honor `proxy_port` so a stable port survives daemon restarts. Details and
 scope estimates live in [../handoff.md](../handoff.md). Not implemented this
 session - the ask was "why".
 
+## Update (fix session)
+
+The second half of the fix direction shipped. `EnsureRunning` now takes a
+`port` argument and `ensureProxy` threads `cfg.ProxyPort` through, so
+`proxy_port` is honored and the daemon rebinds a stable port across restarts
+(`internal/proxy/lifecycle.go`, new `proxyDaemonArgs` helper). A fixed
+`proxy_port` therefore neutralizes the stale-port `ConnectionRefused` for
+long-lived MCP sessions - the previously dead config key now works. The
+remaining cold-start gap for the default `proxy_port = 0` (the URL is still
+resolved once at MCP startup, never re-resolved on the job path) is Path A and
+is still open; see [../handoff.md](../handoff.md).
+
 ## Hard facts
 
 - No code changed. Baseline verified: `go build` exit 0, `go vet` clean,

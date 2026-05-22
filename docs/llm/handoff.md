@@ -3,30 +3,49 @@ id: handoff
 kind: guide
 ---
 
-# Handoff - proxy stale-port bug diagnosed (v1.5.0)
+# Handoff - correctness fix session (6 fixes on v1.5.0)
 
 See also: [00_index.md](00_index.md) · [23_proxy.md](23_proxy.md) · [11_config.md](11_config.md).
 
 ## Current state
 
-Branch: `main`. Version constant `version = "1.5.0"` (`cmd/glm/main.go:32`),
-matching the latest tag `v1.5.0` (golem shipped as a Claude Code skill).
+Branch: `main`. Version constant `version = "1.5.0"` (`cmd/glm/main.go:32`).
+A v1.5.1 patch tag is warranted for the fixes below but was not cut (cutting a
+release is the owner's call).
 
-Baseline verified this session:
+This session shipped **six correctness fixes**, each TDD (failing test first,
+then fix), verified together:
 
 ```
-go build -o /tmp/glm ./cmd/glm/   # exit 0
-go vet ./...                       # clean
-go test ./... -short              # every package ok, 18 total
+go build ./...        # exit 0
+go vet ./...           # clean
+go test ./...          # all 18 packages ok
+go test -race ./...    # exit 0, no data races
 ```
 
-Three uncommitted doc edits were already present at session start and were not
-touched: `docs/llm/10_cli.md`, `11_config.md`, `20_claude_execution.md`.
+An opus critic reviewed the full diff against executing code: all six correct,
+no regressions.
 
-This session did **no code changes** - it diagnosed a runtime bug. The
-diagnosis below is the main artifact; the fix is not written yet.
+| Fix | File | What was wrong |
+|-----|------|----------------|
+| 1 | `internal/cmd/json.go` | `status --json` reported a dead "running" job as running forever (reconcile was gated on a `Contains(jobID,"dead")` test marker). Now checks PID liveness. |
+| 2 | `internal/cmd/clean.go` | `clean` only walked the flat layout, so project-scoped jobs (`<projectID>/<jobID>/`, the production layout) were never removed. Now walks both, and drops emptied project dirs. |
+| 3 | `internal/job/reconcile.go` | One malformed job aborted the whole reconciliation sweep and left the slot counter wrong. Now logs per-job and continues. |
+| 4 | `internal/dag/scheduler.go` | Goroutine leak on context cancellation with a bounded scheduler (completion buffer undersized). Buffer now sized to the step count. |
+| 5 | `internal/dag/executor.go` | A gate step with no validate rule silently passed everything (nil-safe `Check`). Now returns an error. |
+| 6 | `internal/proxy/lifecycle.go` | `proxy_port` was ignored (`--port 0` hard-coded), so every daemon restart bound a new port - the stale-port `ConnectionRefused` root cause. Now honored end-to-end. |
 
-## Main finding: proxy stale-port bug
+Three uncommitted doc edits were present at session start and were left
+untouched: `docs/llm/10_cli.md`, `11_config.md`, `20_claude_execution.md`.
+Because of that, the CLI/config specs covering the user-facing behavior of
+fixes 1, 2 and 6 were NOT refreshed here - update them when those edits land.
+
+## Main finding: proxy stale-port bug (root cause now fixed - see fix 6)
+
+> Resolved this session: `proxy_port` is now honored, so a fixed port survives
+> daemon restarts and a long-lived MCP session's cached URL stays valid. The
+> diagnosis below is retained for context; the only remaining gap is the
+> *default* `proxy_port = 0` case, addressed by Path A under "Next".
 
 Symptom: a `glm_run` (or any MCP-driven job) fails immediately with
 `API Error: Unable to connect to API (ConnectionRefused)`, and no job
@@ -61,19 +80,20 @@ Secondary bug surfaced: `proxy_port` in `glm.toml` has **no effect** -
 `EnsureRunning` hard-codes `--port 0` (`lifecycle.go:68`); `cmdProxy` reads
 `cfg.ProxyPort` (`main.go:1138`) only as a default that `--port 0` overrides.
 
-## Next (pick one; not a queue)
+## Next
 
-- **Path A - re-resolve proxy per job (~1-2h, recommended).** Move the
-  liveness check off MCP startup and onto the job path: in the job handler
-  (`internal/mcp/tools` run/start/chain -> `internal/cmd/execute.go`) call
-  `proxy.IsRunning` (or `EnsureRunning`) and rebuild `ZaiBaseURL` before
-  launching `claude`. Add a test for "daemon died between two jobs". This fixes
-  the root cause, not just the symptom.
-- **Path B - honor `proxy_port` (~30m, partial).** Pass `cfg.ProxyPort` into
-  the daemon launch at `lifecycle.go:68` instead of hard-coding `0`. A stable
-  port survives daemon restarts so the frozen URL stays valid. Does not fix the
-  cold-start gap; best as defense-in-depth on top of A.
-- Both A+B together is the durable answer.
+- **Path B - honor `proxy_port` - DONE this session (fix 6).** `EnsureRunning`
+  takes a `port` arg, `ensureProxy` passes `cfg.ProxyPort`, and the new
+  `proxyDaemonArgs` helper builds the launch args. A fixed `proxy_port` now
+  survives daemon restarts.
+- **Path A - re-resolve proxy per job (~1-2h, still open).** For the default
+  `proxy_port = 0` the URL is still resolved once at MCP startup and never
+  re-resolved, so a daemon that dies mid-session strands the cached URL. Move
+  the liveness check onto the job path: in the job handler (`internal/mcp/tools`
+  run/start/chain -> `internal/cmd/execute.go`) call `proxy.IsRunning`/
+  `EnsureRunning` and rebuild `ZaiBaseURL` before launching `claude`. Add a
+  "daemon died between two jobs" test. With a fixed `proxy_port` this is now
+  belt-and-suspenders rather than the only line of defense.
 
 Fast deterministic repro before fixing: start `glm mcp`, then kill the proxy
 daemon (`glm proxy stop` or `kill $(cat ~/.config/GoLeM/proxy.pid)`), then send
@@ -81,7 +101,7 @@ a job to that MCP session -> `ConnectionRefused`.
 
 ## What does NOT exist yet
 
-- The fix above - only the diagnosis exists.
+- Path A (per-job proxy re-resolution) - see "Next".
 - `internal/event` is still not bridged into the MCP server; `glm_start` emits
   no JSON-RPC progress notifications (`// TODO` at `cmd/glm/main.go:1277`).
 - `internal/config/provider.go` `LoadProvider` (line 76) is defined but called

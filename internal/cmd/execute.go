@@ -134,7 +134,9 @@ func ExecuteJob(ctx context.Context, params ExecuteJobParams) (*ExecuteJobResult
 	// Determine final status.
 	stderrData, _ := os.ReadFile(filepath.Join(j.Dir, "stderr.txt"))
 	finalStatus := claude.MapStatus(exitCode, string(stderrData))
-	_ = os.WriteFile(filepath.Join(j.Dir, "status"), []byte(finalStatus), 0o644)
+	// Atomic write (tmp+rename) so a concurrent reader (e.g. 'status --json')
+	// never observes a truncated status file.
+	_ = j.SetStatus(job.Status(finalStatus))
 
 	// Read stdout and changelog before potential auto-delete.
 	stdoutData, _ := os.ReadFile(filepath.Join(j.Dir, "stdout.txt"))

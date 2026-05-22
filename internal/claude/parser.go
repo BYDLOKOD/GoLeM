@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,10 +9,20 @@ import (
 	"strings"
 )
 
-// rawOutput is the top-level structure of the JSON emitted by claude --output-format json.
+// rawOutput is the legacy single-object form of claude --output-format json.
 type rawOutput struct {
-	Result   string        `json:"result"`
-	Messages []rawMessage  `json:"messages"`
+	Result   string       `json:"result"`
+	Messages []rawMessage `json:"messages"`
+}
+
+// streamEvent is one element of the array form emitted by current Claude Code
+// (claude 2.1+): [{type:"system"...},{type:"assistant",message:{...}},{type:"result",result:"..."}].
+// The final result text lives on the type=="result" element; tool_use blocks
+// live under the message.content of type=="assistant" elements.
+type streamEvent struct {
+	Type    string     `json:"type"`
+	Result  string     `json:"result"`
+	Message rawMessage `json:"message"`
 }
 
 type rawMessage struct {
@@ -60,22 +71,56 @@ func ParseRawJSON(jobDir string) error {
 		return fmt.Errorf("read raw.json: %w", err)
 	}
 
-	var out rawOutput
-	if jsonErr := json.Unmarshal(data, &out); jsonErr != nil {
-		// Malformed JSON — warn and write empty files.
-		fmt.Fprintf(os.Stderr, "warning: malformed JSON in raw.json: %v\n", jsonErr)
+	result, toolUses, perr := extractResult(data)
+	if perr != nil {
+		// Malformed JSON - warn and write empty files.
+		fmt.Fprintf(os.Stderr, "warning: malformed JSON in raw.json: %v\n", perr)
 		if writeErr := os.WriteFile(filepath.Join(jobDir, "stdout.txt"), []byte(""), 0o644); writeErr != nil {
 			return writeErr
 		}
 		return GenerateChangelog(jobDir, nil)
 	}
 
-	// Write stdout.txt from .result.
-	if err := os.WriteFile(filepath.Join(jobDir, "stdout.txt"), []byte(out.Result), 0o644); err != nil {
+	// Write stdout.txt from the result text.
+	if err := os.WriteFile(filepath.Join(jobDir, "stdout.txt"), []byte(result), 0o644); err != nil {
 		return fmt.Errorf("write stdout.txt: %w", err)
 	}
 
-	// Collect tool_use entries from all messages.
+	return GenerateChangelog(jobDir, toolUses)
+}
+
+// extractResult parses claude's --output-format json output into the final
+// result text and the tool_use content blocks. It supports both the current
+// array form (a stream of typed events) and the legacy single-object form, so
+// a Claude Code update that flips between them does not silently blank the
+// golem's output.
+func extractResult(data []byte) (string, []rawContent, error) {
+	trimmed := bytes.TrimSpace(data)
+
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		var events []streamEvent
+		if err := json.Unmarshal(trimmed, &events); err != nil {
+			return "", nil, err
+		}
+		var result string
+		var toolUses []rawContent
+		for _, e := range events {
+			if e.Type == "result" {
+				result = e.Result
+			}
+			for _, c := range e.Message.Content {
+				if c.Type == "tool_use" {
+					toolUses = append(toolUses, c)
+				}
+			}
+		}
+		return result, toolUses, nil
+	}
+
+	var out rawOutput
+	if err := json.Unmarshal(trimmed, &out); err != nil {
+		return "", nil, err
+	}
 	var toolUses []rawContent
 	for _, msg := range out.Messages {
 		for _, c := range msg.Content {
@@ -84,8 +129,7 @@ func ParseRawJSON(jobDir string) error {
 			}
 		}
 	}
-
-	return GenerateChangelog(jobDir, toolUses)
+	return out.Result, toolUses, nil
 }
 
 // GenerateChangelog synthesises changelog.txt from a slice of tool_use content

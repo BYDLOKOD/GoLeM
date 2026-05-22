@@ -270,6 +270,33 @@ func TestBuildFlagsWithoutMCPConfigOmitsFlags(t *testing.T) {
 	}
 }
 
+// TestBuildFlagsWithVisionMCP verifies the built-in vision config is emitted as
+// a --mcp-config value.
+func TestBuildFlagsWithVisionMCP(t *testing.T) {
+	cfg := claude.Config{VisionMCPConfig: "/cfg/golem-vision-mcp.json"}
+	flags := claude.BuildFlags(cfg)
+	joined := strings.Join(flags, " ")
+
+	if !strings.Contains(joined, "--mcp-config /cfg/golem-vision-mcp.json") {
+		t.Errorf("flags missing vision --mcp-config; got: %q", joined)
+	}
+}
+
+// TestBuildFlagsWithVisionAndUserMCP verifies that both configs are emitted,
+// vision first, as two separate --mcp-config flags (claude accumulates them).
+func TestBuildFlagsWithVisionAndUserMCP(t *testing.T) {
+	cfg := claude.Config{VisionMCPConfig: "/cfg/vision.json", MCPConfig: "/cfg/user.json"}
+	flags := claude.BuildFlags(cfg)
+	joined := strings.Join(flags, " ")
+
+	if strings.Count(joined, "--mcp-config") != 2 {
+		t.Errorf("expected two --mcp-config flags; got: %q", joined)
+	}
+	if !strings.Contains(joined, "--mcp-config /cfg/vision.json --mcp-config /cfg/user.json") {
+		t.Errorf("vision config should precede the user config; got: %q", joined)
+	}
+}
+
 // --------------------------------------------------------------------------
 // AC3: CLI flag construction
 // --------------------------------------------------------------------------
@@ -468,6 +495,37 @@ func TestParseRawJSONWithEditAndWriteToolCalls(t *testing.T) {
 	}
 	if !strings.Contains(gotChangelog, "WRITE /home/veschin/work/GoLeM/internal/job/atomic.go") {
 		t.Errorf("changelog missing WRITE entry; got: %q", gotChangelog)
+	}
+}
+
+// TestParseRawJSONArrayFormat verifies the current Claude Code array output form
+// ([{type:system},{type:assistant,message:{...}},{type:result,result:"..."}]) is
+// parsed: the result text reaches stdout.txt and tool_use blocks under an
+// assistant element's message.content reach the changelog. Guards against a
+// Claude Code update blanking golem output (the legacy form was a single object).
+func TestParseRawJSONArrayFormat(t *testing.T) {
+	jobDir := t.TempDir()
+	raw := `[
+	  {"type":"system","subtype":"init"},
+	  {"type":"assistant","message":{"role":"assistant","content":[
+	    {"type":"text","text":"working on it"},
+	    {"type":"tool_use","name":"Write","input":{"file_path":"/tmp/x.go","content":"package x"}}
+	  ]}},
+	  {"type":"result","subtype":"success","is_error":false,"result":"done: wrote the file"}
+	]`
+	if err := os.WriteFile(filepath.Join(jobDir, "raw.json"), []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := claude.ParseRawJSON(jobDir); err != nil {
+		t.Fatalf("ParseRawJSON: %v", err)
+	}
+
+	if got := readJobFile(t, jobDir, "stdout.txt"); got != "done: wrote the file" {
+		t.Errorf("stdout.txt = %q, want the result text from the array's result element", got)
+	}
+	if got := readJobFile(t, jobDir, "changelog.txt"); !strings.Contains(got, "WRITE /tmp/x.go") {
+		t.Errorf("changelog missing the tool_use from the assistant element; got: %q", got)
 	}
 }
 

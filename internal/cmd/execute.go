@@ -205,6 +205,17 @@ func BuildClaudeConfig(cfg *config.Config, flags *Flags, jobDir string) (claude.
 		mcpConfig = cfg.MCPConfig
 	}
 
+	// Built-in Z.AI vision MCP server (default on): write its config with the
+	// API key filled in to a 0600 file and attach it golem-side only.
+	visionMCP := ""
+	if cfg.VisionMCP {
+		p, werr := WriteVisionMCPConfig(cfg.ConfigDir, cfg.ZaiAPIKey)
+		if werr != nil {
+			return claude.Config{}, werr
+		}
+		visionMCP = p
+	}
+
 	return claude.Config{
 		ZAIAPIKey:              cfg.ZaiAPIKey,
 		ZAIBaseURL:             cfg.ZaiBaseURL,
@@ -223,5 +234,6 @@ func BuildClaudeConfig(cfg *config.Config, flags *Flags, jobDir string) (claude.
 		SystemPrompt:           finalSystemPrompt,
 		MCPConfig:              mcpConfig,
 		MCPStrict:              cfg.MCPStrict,
+		VisionMCPConfig:        visionMCP,
 	}, nil
 }

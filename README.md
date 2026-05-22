@@ -476,6 +476,7 @@ glm config set debug true
 | `GLM_SYSTEM_PROMPT` | `system_prompt` |
 | `GLM_MCP_CONFIG` | `mcp_config` |
 | `GLM_MCP_STRICT` | `mcp_strict` |
+| `GLM_VISION_MCP` | `vision_mcp` |
 | `GLM_EXCLUDE_DYNAMIC_SECTIONS` | `exclude_dynamic_sections` |
 | `GLM_LOG_FORMAT` | log format (`json` or human) |
 | `GLM_LOG_FILE` | log file path |
@@ -492,52 +493,62 @@ glm config set debug true
 
 ## Attaching MCP servers to golems
 
-Golems can be given extra MCP servers without registering them in the host
+Golems can use MCP servers without registering them in the host
 `~/.claude/settings.json`, so the orchestrating Claude Code (Opus) session is
-left untouched. The servers are passed only to each golem's `claude`
-subprocess via `--mcp-config`.
+left untouched. The servers are spawned only by each golem's `claude`
+subprocess.
 
-The motivating case is [Z.AI's image-vision MCP server](https://docs.z.ai/devpack/mcp/vision-mcp-server),
-which gives a golem tools to read screenshots, scans, and diagrams
-(`image_analysis`, `extract_text_from_screenshot`, `video_analysis`, ...). Put
-its config in a file using the standard `--mcp-config` shape (an `mcpServers`
-object). For example `~/.config/GoLeM/golem-mcp.json`:
+### Z.AI vision (built-in, on by default)
+
+[Z.AI's image-vision MCP server](https://docs.z.ai/devpack/mcp/vision-mcp-server)
+is attached to every golem out of the box, so golems can read screenshots,
+scans, and diagrams (`image_analysis`, `extract_text_from_screenshot`,
+`video_analysis`, ...) with no setup. GoLeM generates the server config and fills
+in your Z.AI key automatically - written to
+`~/.config/GoLeM/golem-vision-mcp.json` at mode 0600, never passed on the
+command line. It uses `npx` and Node >= 22; if either is missing the golem still
+runs, just without the vision tools.
+
+Turn it off in `glm.toml`, or per shell:
+
+```toml
+vision_mcp = false
+```
+
+```bash
+GLM_VISION_MCP=0 glm run --dir . --timeout 300 "..."
+```
+
+### Your own MCP servers
+
+Supply additional servers with `--mcp-config` (a file path or inline JSON in
+the standard `mcpServers` shape). They are added alongside the built-in vision
+server:
 
 ```json
 {
   "mcpServers": {
-    "zai-mcp-server": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@z_ai/mcp-server"],
-      "env": {
-        "Z_AI_API_KEY": "your_zai_key",
-        "Z_AI_MODE": "ZAI"
-      }
-    }
+    "my-server": { "type": "stdio", "command": "my-mcp-binary", "args": [] }
   }
 }
 ```
 
-Attach it per call, or set it as the default for every golem:
-
 ```bash
 # per call (the shell expands ~ before glm sees it)
-glm run --dir ./docs --mcp-config ~/.config/GoLeM/golem-mcp.json \
-  "распознай все сканы в этой папке и собери их в один текстовый файл"
+glm run --dir ./project --mcp-config ~/.config/GoLeM/my-mcp.json "..."
 ```
 
 ```toml
 # glm.toml: default for every golem. Use an absolute path - glm.toml values
 # are literal (no ~ expansion).
-mcp_config = "/home/you/.config/GoLeM/golem-mcp.json"
-mcp_strict = false   # true => golem uses only these servers, ignoring global MCP
+mcp_config = "/home/you/.config/GoLeM/my-mcp.json"
+mcp_strict = false   # true => golems use only the supplied servers, ignoring global MCP
 ```
 
-Resolution order for a golem: the `--mcp-config` flag, then `mcp_config` in
-`glm.toml`, then the `GLM_MCP_CONFIG` environment variable. With `mcp_strict`
-(or `GLM_MCP_STRICT=true`) the golem passes `--strict-mcp-config` to `claude`
-and uses only the supplied servers, ignoring all other MCP configuration.
+Resolution: the `--mcp-config` flag overrides `mcp_config`, which falls back to
+`GLM_MCP_CONFIG`. With `mcp_strict` (or `GLM_MCP_STRICT=true`) the golem passes
+`--strict-mcp-config` and uses only the `--mcp-config` servers (vision plus
+yours), ignoring all other MCP configuration.
 
 ## MCP Server
 

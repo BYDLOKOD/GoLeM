@@ -193,17 +193,27 @@ func SessionCmd(cfg *config.Config, args []string, debugLog io.Writer) (*Session
 		argv = append(argv, "--permission-mode", sa.PermissionMode)
 	}
 
-	// Golem-scoped MCP servers: flag overrides config default; never touches
-	// the host ~/.claude/settings.json.
-	mcpConfig := sa.MCPConfig
-	if mcpConfig == "" {
-		mcpConfig = cfg.MCPConfig
-	}
-	if mcpConfig != "" {
-		argv = append(argv, "--mcp-config", mcpConfig)
-		if cfg.MCPStrict {
-			argv = append(argv, "--strict-mcp-config")
+	// Golem-scoped MCP servers (built-in vision + user config): never touches
+	// the host ~/.claude/settings.json. Flag overrides config default for the
+	// user-supplied one.
+	var mcpVals []string
+	if cfg.VisionMCP {
+		if p, werr := WriteVisionMCPConfig(cfg.ConfigDir, cfg.ZaiAPIKey); werr == nil {
+			mcpVals = append(mcpVals, p)
 		}
+	}
+	mcpUser := sa.MCPConfig
+	if mcpUser == "" {
+		mcpUser = cfg.MCPConfig
+	}
+	if mcpUser != "" {
+		mcpVals = append(mcpVals, mcpUser)
+	}
+	for _, v := range mcpVals {
+		argv = append(argv, "--mcp-config", v)
+	}
+	if len(mcpVals) > 0 && cfg.MCPStrict {
+		argv = append(argv, "--strict-mcp-config")
 	}
 
 	// Append passthrough args.

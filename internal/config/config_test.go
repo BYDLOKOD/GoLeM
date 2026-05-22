@@ -1233,6 +1233,31 @@ func TestParseTOMLMCPConfigDefaults(t *testing.T) {
 	}
 }
 
+// ---- Scenario: the built-in vision MCP is on by default ----
+
+func TestVisionMCPDefaultsOn(t *testing.T) {
+	configDir, subagentDir := setupDirs(t)
+	writeAPIKey(t, configDir, seedHappyPathAPIKey)
+
+	cfg, err := Load(configDir, subagentDir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.VisionMCP {
+		t.Error("VisionMCP should default to true (zero-config vision)")
+	}
+}
+
+func TestVisionMCPDisabledByConfig(t *testing.T) {
+	cfg := &Config{VisionMCP: true} // start from the loaded default
+	if err := parseTOML(`vision_mcp = false`, cfg); err != nil {
+		t.Fatalf("parseTOML: %v", err)
+	}
+	if cfg.VisionMCP {
+		t.Error("vision_mcp = false should turn the vision MCP off")
+	}
+}
+
 // ---- Scenario: GLM_SYSTEM_PROMPT env var overrides TOML value ----
 
 func TestEnvGLMSystemPromptOverride(t *testing.T) {

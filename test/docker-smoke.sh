@@ -7,6 +7,12 @@
 
 set -uo pipefail
 
+# The built-in Z.AI vision MCP is on by default; disable it for the smoke run so
+# golems do not spawn the npx vision server (network + Node 22), keeping the
+# suite deterministic. The vision config generation is covered by unit tests;
+# the prompt-separation fix it depends on is exercised by the --mcp-config step.
+export GLM_VISION_MCP=0
+
 PASS=0
 FAIL=0
 FAILED_STEPS=()
@@ -125,6 +131,13 @@ step "real glm run via Z.AI (90s timeout)" \
 
 step "real glm chain via Z.AI (120s timeout)" \
     bash -c 'set -o pipefail; glm chain --dir /tmp/glm-test-workdir --timeout 120 "List files in this directory" "How many files are there?" > /tmp/chain.out 2>&1; rc=$?; tail -10 /tmp/chain.out; exit $rc'
+
+# Regression: --mcp-config is variadic and must not swallow the positional
+# prompt (the "--" separator). An empty mcpServers config needs no npx server,
+# so this stays fast; the golem must still answer with the requested token.
+echo '{"mcpServers":{}}' > /tmp/glm-test-workdir/empty-mcp.json
+step "glm run --mcp-config keeps the prompt (Z.AI, 90s)" \
+    bash -c 'set -o pipefail; glm run --dir /tmp/glm-test-workdir --mcp-config /tmp/glm-test-workdir/empty-mcp.json --timeout 90 "Reply with exactly the single token BANANAGUARD and nothing else." > /tmp/mcprun.out 2>&1; rc=$?; tail -10 /tmp/mcprun.out; grep -qi BANANAGUARD /tmp/mcprun.out; exit $((rc!=0 ? rc : $?))'
 
 # Real DAG pipeline via Z.AI
 cat > /tmp/glm-test-workdir/pipeline.json <<'PIPE'

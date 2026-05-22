@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.4.0 - 2026-05-22
+
+- **Fixed: golem output was blank on current Claude Code.** Recent `claude`
+  versions emit `--output-format json` as an array of typed events
+  (`[{type:system},{type:assistant},{type:result,result:"..."}]`) rather than a
+  single object. The parser expected the object form, so the result text never
+  reached `stdout.txt` and `glm run`/`start`/`chain` returned nothing. The
+  parser now handles both forms (array and legacy object), reading the result
+  from the `type:result` event and tool_use blocks from `type:assistant`
+  events - so a Claude Code update flipping the shape no longer blanks output.
+- **Z.AI image-vision MCP server is now attached to golems by default.** Golems
+  can read screenshots, scans, and diagrams out of the box (`image_analysis`,
+  `extract_text_from_screenshot`, `video_analysis`, ...) with no setup. GoLeM
+  generates the [server config](https://docs.z.ai/devpack/mcp/vision-mcp-server)
+  and fills in the Z.AI API key automatically, writing it to
+  `~/.config/GoLeM/golem-vision-mcp.json` at mode 0600 - the key is never put on
+  the command line. Requires `npx` and Node >= 22; if either is missing the golem
+  still runs without the vision tools (claude tolerates a failing MCP server).
+  Disable with `vision_mcp = false` in `glm.toml` or `GLM_VISION_MCP=0`.
+- **Fixed: `--mcp-config` swallowed the prompt.** claude's `--mcp-config` is
+  variadic and, placed before the positional prompt, consumed the prompt as
+  another config value (introduced in v1.3.0). The prompt is now separated with
+  `--` whenever an MCP config is attached. Multiple MCP configs (the built-in
+  vision plus a user-supplied one) are passed as repeated `--mcp-config` flags,
+  which claude accumulates.
+
 ## v1.3.0 - 2026-05-22
 
 - Golem-scoped MCP servers. Golems can now be given extra MCP servers (for

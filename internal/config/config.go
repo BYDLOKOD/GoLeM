@@ -54,6 +54,7 @@ type Config struct {
 	SystemPrompt           string         // optional default system prompt for all invocations
 	MCPConfig              string         // path/JSON of MCP servers attached to golems only (claude --mcp-config)
 	MCPStrict              bool           // golems use only MCPConfig servers, ignoring global (claude --strict-mcp-config)
+	VisionMCP              bool           // attach the built-in Z.AI image-vision MCP server to golems (default on)
 }
 
 // Options allows CLI flags to override config values after load.
@@ -87,6 +88,7 @@ func LoadWithOptions(configDir, subagentDir string, opts Options) (*Config, erro
 		ProxyPort:              DefaultProxyPort,
 		Effort:                 "",
 		ExcludeDynamicSections: false,
+		VisionMCP:              true,
 	}
 
 	// 1. Read TOML from configDir/glm.toml
@@ -265,6 +267,8 @@ func parseGlobalKey(key, value string, cfg *Config) error {
 		cfg.MCPConfig = value
 	case "mcp_strict":
 		cfg.MCPStrict = value == "true"
+	case "vision_mcp":
+		cfg.VisionMCP = value == "true"
 	}
 	// Unknown keys are ignored
 	return nil
@@ -348,6 +352,10 @@ func applyEnvOverrides(cfg *Config) {
 	if v := getenv("GLM_MCP_STRICT"); v != "" {
 		lower := strings.ToLower(v)
 		cfg.MCPStrict = lower == "true" || lower == "1"
+	}
+	if v := getenv("GLM_VISION_MCP"); v != "" {
+		lower := strings.ToLower(v)
+		cfg.VisionMCP = lower == "true" || lower == "1"
 	}
 	if v := getenv("GLM_EXCLUDE_DYNAMIC_SECTIONS"); v != "" {
 		lower := strings.ToLower(v)

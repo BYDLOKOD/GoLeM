@@ -36,7 +36,8 @@ type Config struct {
 	Effort                 string // --effort flag value (e.g. "max")
 	ExcludeDynamicSections bool   // --exclude-dynamic-system-prompt-sections flag
 	MCPConfig              string // --mcp-config value (golem-scoped MCP servers; empty = none)
-	MCPStrict              bool   // --strict-mcp-config (only MCPConfig servers, ignore global)
+	MCPStrict              bool   // --strict-mcp-config (only MCP-config servers, ignore global)
+	VisionMCPConfig        string // path to the generated built-in Z.AI vision MCP config (empty = off)
 
 	// Event bus (optional). Nil means no events are published.
 	Bus       *event.Bus
@@ -115,16 +116,35 @@ func BuildFlags(cfg Config) []string {
 		flags = append(flags, "--permission-mode", cfg.PermissionMode)
 	}
 
-	// Golem-scoped MCP servers. Passed per-invocation so they never touch the
-	// host ~/.claude/settings.json used by the orchestrating Claude Code session.
-	if cfg.MCPConfig != "" {
-		flags = append(flags, "--mcp-config", cfg.MCPConfig)
-		if cfg.MCPStrict {
-			flags = append(flags, "--strict-mcp-config")
-		}
+	// Golem-scoped MCP servers, passed per-invocation so they never touch the
+	// host ~/.claude/settings.json used by the orchestrating Claude Code
+	// session. Built-in vision config first, then the user-supplied one;
+	// claude accumulates repeated --mcp-config flags.
+	for _, v := range mcpConfigValues(cfg) {
+		flags = append(flags, "--mcp-config", v)
+	}
+	if hasMCPConfig(cfg) && cfg.MCPStrict {
+		flags = append(flags, "--strict-mcp-config")
 	}
 
 	return flags
+}
+
+// mcpConfigValues returns the ordered list of --mcp-config values for cfg.
+func mcpConfigValues(cfg Config) []string {
+	var vals []string
+	if cfg.VisionMCPConfig != "" {
+		vals = append(vals, cfg.VisionMCPConfig)
+	}
+	if cfg.MCPConfig != "" {
+		vals = append(vals, cfg.MCPConfig)
+	}
+	return vals
+}
+
+// hasMCPConfig reports whether any golem-scoped MCP config is attached.
+func hasMCPConfig(cfg Config) bool {
+	return cfg.VisionMCPConfig != "" || cfg.MCPConfig != ""
 }
 
 // Execute runs the Claude CLI as a subprocess inside cfg.WorkDir with the
@@ -182,7 +202,15 @@ func Execute(parent context.Context, cfg Config) (int, error) {
 	defer cancel()
 
 	flags := BuildFlags(cfg)
-	args := append(flags, cfg.Prompt)
+	// claude's --mcp-config is variadic and would otherwise swallow the prompt
+	// as another config value; "--" ends option parsing so the prompt stays
+	// positional. Only inserted when an MCP config is attached.
+	args := make([]string, 0, len(flags)+2)
+	args = append(args, flags...)
+	if hasMCPConfig(cfg) {
+		args = append(args, "--")
+	}
+	args = append(args, cfg.Prompt)
 	cmd := exec.Command("claude", args...)
 	cmd.Dir = cfg.WorkDir
 	cmd.Env = BuildEnv(cfg)

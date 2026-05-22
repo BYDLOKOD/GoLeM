@@ -6,7 +6,7 @@ _glm() {
     _init_completion || return
 
     local commands="session run start status result log list clean kill chain pipeline update doctor config mcp _install _uninstall version help"
-    local flags="-d --dir -t --timeout -m --model --opus --sonnet --haiku --tier --unsafe --mode --system-prompt --constraint --json"
+    local flags="-d --dir -t --timeout -m --model --opus --sonnet --haiku --tier --unsafe --mode --system-prompt --constraint --mcp-config --json"
     local config_keys="model opus_model sonnet_model haiku_model permission_mode debug proxy_enabled proxy_port proxy_idle_timeout effort exclude_dynamic_sections system_prompt"
     local status_values="queued running done failed timeout killed permission_error"
     local modes="bypassPermissions acceptEdits default plan"
@@ -50,6 +50,10 @@ _glm() {
                     ;;
                 --constraint)
                     COMPREPLY=($(compgen -W "$constraint_keys" -- "$cur"))
+                    return
+                    ;;
+                --mcp-config)
+                    _filedir json
                     return
                     ;;
                 --system-prompt)

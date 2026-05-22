@@ -225,6 +225,52 @@ func TestBuildFlagsWithExcludeDynamicSectionsFalse(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
+// --mcp-config / --strict-mcp-config flags (golem-scoped MCP servers)
+// --------------------------------------------------------------------------
+
+// TestBuildFlagsWithMCPConfig verifies that a non-empty MCPConfig produces
+// --mcp-config <value> so MCP servers attach to the golem only.
+func TestBuildFlagsWithMCPConfig(t *testing.T) {
+	cfg := claude.Config{MCPConfig: "/cfg/zai-mcp.json"}
+	flags := claude.BuildFlags(cfg)
+	joined := strings.Join(flags, " ")
+
+	if !strings.Contains(joined, "--mcp-config /cfg/zai-mcp.json") {
+		t.Errorf("flags missing --mcp-config; got: %q", joined)
+	}
+	if strings.Contains(joined, "--strict-mcp-config") {
+		t.Errorf("flags should not contain --strict-mcp-config when MCPStrict is false; got: %q", joined)
+	}
+}
+
+// TestBuildFlagsWithMCPStrict verifies that MCPStrict adds --strict-mcp-config
+// alongside --mcp-config.
+func TestBuildFlagsWithMCPStrict(t *testing.T) {
+	cfg := claude.Config{MCPConfig: "/cfg/zai-mcp.json", MCPStrict: true}
+	flags := claude.BuildFlags(cfg)
+	joined := strings.Join(flags, " ")
+
+	if !strings.Contains(joined, "--mcp-config /cfg/zai-mcp.json") {
+		t.Errorf("flags missing --mcp-config; got: %q", joined)
+	}
+	if !strings.Contains(joined, "--strict-mcp-config") {
+		t.Errorf("flags missing --strict-mcp-config when MCPStrict is true; got: %q", joined)
+	}
+}
+
+// TestBuildFlagsWithoutMCPConfigOmitsFlags verifies that an empty MCPConfig
+// adds neither flag, so golems are not affected and the host session is intact.
+func TestBuildFlagsWithoutMCPConfigOmitsFlags(t *testing.T) {
+	cfg := claude.Config{}
+	flags := claude.BuildFlags(cfg)
+	joined := strings.Join(flags, " ")
+
+	if strings.Contains(joined, "--mcp-config") || strings.Contains(joined, "--strict-mcp-config") {
+		t.Errorf("flags should not contain MCP flags when unset; got: %q", joined)
+	}
+}
+
+// --------------------------------------------------------------------------
 // AC3: CLI flag construction
 // --------------------------------------------------------------------------
 
@@ -360,7 +406,7 @@ func TestExecuteClaudeInSpecifiedWorkingDirectoryWithTimeout(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
-// AC5: Stdout → raw.json, stderr → stderr.txt
+// AC5: Stdout -> raw.json, stderr -> stderr.txt
 // --------------------------------------------------------------------------
 
 // TestStdoutCapturedToRawJSONAndStderrToStderrTxt verifies that after a
@@ -800,7 +846,7 @@ func TestPython3IsNotRequired(t *testing.T) {
 	}
 
 	_, err := claude.Execute(t.Context(), cfg)
-	// The only acceptable error here is NOT a dependency error — the CLI ran
+	// The only acceptable error here is NOT a dependency error - the CLI ran
 	// (and exited 0) so there should be no error at all, or if it fails it
 	// must not be the "claude CLI not found" dependency error.
 	if err != nil && strings.Contains(err.Error(), `err:dependency "claude CLI not found in PATH"`) {
@@ -924,7 +970,7 @@ func TestWorkingDirectoryDoesNotExist(t *testing.T) {
 		t.Errorf("exit code = %d, want 1", code)
 	}
 
-	// claude must not have been executed — raw.json must not exist.
+	// claude must not have been executed - raw.json must not exist.
 	if _, err := os.Stat(filepath.Join(jobDir, "raw.json")); err == nil {
 		t.Error("raw.json must not exist when working directory is invalid")
 	}
@@ -1013,7 +1059,7 @@ while true; do :; done
 	data1, _ := os.ReadFile(markerFile)
 	count1 := len(strings.Split(strings.TrimSpace(string(data1)), "\n"))
 
-	// Wait again — if child survived it would have written more lines.
+	// Wait again - if child survived it would have written more lines.
 	time.Sleep(500 * time.Millisecond)
 	data2, _ := os.ReadFile(markerFile)
 	count2 := len(strings.Split(strings.TrimSpace(string(data2)), "\n"))
@@ -1073,7 +1119,7 @@ func TestBashCommandLongerThan80CharsIsTruncatedInChangelog(t *testing.T) {
 	// The command portion is after "FS: ".
 	cmdPart := strings.TrimPrefix(fsLine, "FS: ")
 	if len(cmdPart) > 80 {
-		t.Errorf("command part is %d chars, want ≤ 80; got: %q", len(cmdPart), cmdPart)
+		t.Errorf("command part is %d chars, want <= 80; got: %q", len(cmdPart), cmdPart)
 	}
 }
 
@@ -1310,7 +1356,7 @@ func TestExecute_PublishesJobTimeout(t *testing.T) {
 // TestExecute_RespectsParentContextCancellation verifies that cancelling the
 // context passed to Execute terminates the subprocess and returns exit code
 // 124 (timeout). This is the regression test for the previous behavior, where
-// Execute discarded the caller's context entirely — pipeline cancellation
+// Execute discarded the caller's context entirely - pipeline cancellation
 // could not stop in-flight Claude subprocesses.
 //
 // The fake claude script spins forever. The local TimeoutSecs is set high

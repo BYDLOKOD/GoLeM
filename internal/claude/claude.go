@@ -35,6 +35,8 @@ type Config struct {
 	JobDir                 string
 	Effort                 string // --effort flag value (e.g. "max")
 	ExcludeDynamicSections bool   // --exclude-dynamic-system-prompt-sections flag
+	MCPConfig              string // --mcp-config value (golem-scoped MCP servers; empty = none)
+	MCPStrict              bool   // --strict-mcp-config (only MCPConfig servers, ignore global)
 
 	// Event bus (optional). Nil means no events are published.
 	Bus       *event.Bus
@@ -111,6 +113,15 @@ func BuildFlags(cfg Config) []string {
 		flags = append(flags, "--dangerously-skip-permissions")
 	} else if cfg.PermissionMode != "" {
 		flags = append(flags, "--permission-mode", cfg.PermissionMode)
+	}
+
+	// Golem-scoped MCP servers. Passed per-invocation so they never touch the
+	// host ~/.claude/settings.json used by the orchestrating Claude Code session.
+	if cfg.MCPConfig != "" {
+		flags = append(flags, "--mcp-config", cfg.MCPConfig)
+		if cfg.MCPStrict {
+			flags = append(flags, "--strict-mcp-config")
+		}
 	}
 
 	return flags
@@ -206,7 +217,7 @@ func Execute(parent context.Context, cfg Config) (int, error) {
 	case runErr = <-done:
 		// Process exited normally (or with an error) before timeout.
 	case <-ctx.Done():
-		// Timeout — kill the entire process group, not just the child PID.
+		// Timeout - kill the entire process group, not just the child PID.
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		runErr = <-done // wait for the process to actually exit
 	}
@@ -224,7 +235,7 @@ func Execute(parent context.Context, cfg Config) (int, error) {
 	exitCode := 0
 	if runErr != nil {
 		if ctx.Err() != nil {
-			// Context expired — treat as timeout regardless of the raw exit code.
+			// Context expired - treat as timeout regardless of the raw exit code.
 			exitCode = 124
 		} else if exitErr, ok := runErr.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()

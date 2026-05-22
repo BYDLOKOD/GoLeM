@@ -243,6 +243,7 @@ Apply to `session`, `run`, `start`, and `chain`.
 | `--mode MODE` | Set permission mode |
 | `--system-prompt TEXT` | Override the system prompt for this invocation |
 | `--constraint KEY` | Add a behavior constraint (repeatable); see [System Prompt and Constraints](#system-prompt-and-constraints) |
+| `--mcp-config FILE` | Attach MCP servers to golems only; see [Attaching MCP servers to golems](#attaching-mcp-servers-to-golems) |
 | `--json` | JSON output format |
 
 Claude Code uses three model slots internally: heavy tasks go to opus, normal tasks to sonnet, fast tasks to haiku. All three default to `glm-5.1`. `--model` changes all at once; `--opus`/`--sonnet`/`--haiku` change them individually.
@@ -473,6 +474,8 @@ glm config set debug true
 | `GLM_MODEL_CONCURRENCY` | `[models]` (format: `"name:N,name2:M"`) |
 | `GLM_EFFORT` | `effort` |
 | `GLM_SYSTEM_PROMPT` | `system_prompt` |
+| `GLM_MCP_CONFIG` | `mcp_config` |
+| `GLM_MCP_STRICT` | `mcp_strict` |
 | `GLM_EXCLUDE_DYNAMIC_SECTIONS` | `exclude_dynamic_sections` |
 | `GLM_LOG_FORMAT` | log format (`json` or human) |
 | `GLM_LOG_FILE` | log file path |
@@ -486,6 +489,55 @@ glm config set debug true
 | `~/.claude/subagents/<project>/<job>/` | Job storage |
 | `~/.claude/settings.json` | MCP server registration |
 | `~/.claude/CLAUDE.md` | System prompt injection |
+
+## Attaching MCP servers to golems
+
+Golems can be given extra MCP servers without registering them in the host
+`~/.claude/settings.json`, so the orchestrating Claude Code (Opus) session is
+left untouched. The servers are passed only to each golem's `claude`
+subprocess via `--mcp-config`.
+
+The motivating case is [Z.AI's image-vision MCP server](https://docs.z.ai/devpack/mcp/vision-mcp-server),
+which gives a golem tools to read screenshots, scans, and diagrams
+(`image_analysis`, `extract_text_from_screenshot`, `video_analysis`, ...). Put
+its config in a file using the standard `--mcp-config` shape (an `mcpServers`
+object). For example `~/.config/GoLeM/golem-mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "zai-mcp-server": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@z_ai/mcp-server"],
+      "env": {
+        "Z_AI_API_KEY": "your_zai_key",
+        "Z_AI_MODE": "ZAI"
+      }
+    }
+  }
+}
+```
+
+Attach it per call, or set it as the default for every golem:
+
+```bash
+# per call (the shell expands ~ before glm sees it)
+glm run --dir ./docs --mcp-config ~/.config/GoLeM/golem-mcp.json \
+  "распознай все сканы в этой папке и собери их в один текстовый файл"
+```
+
+```toml
+# glm.toml: default for every golem. Use an absolute path - glm.toml values
+# are literal (no ~ expansion).
+mcp_config = "/home/you/.config/GoLeM/golem-mcp.json"
+mcp_strict = false   # true => golem uses only these servers, ignoring global MCP
+```
+
+Resolution order for a golem: the `--mcp-config` flag, then `mcp_config` in
+`glm.toml`, then the `GLM_MCP_CONFIG` environment variable. With `mcp_strict`
+(or `GLM_MCP_STRICT=true`) the golem passes `--strict-mcp-config` to `claude`
+and uses only the supplied servers, ignoring all other MCP configuration.
 
 ## MCP Server
 

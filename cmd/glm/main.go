@@ -29,7 +29,7 @@ import (
 	"github.com/veschin/GoLeM/internal/slot"
 )
 
-const version = "1.2.3"
+const version = "1.3.0"
 
 // logger is the global structured logger, initialized in run().
 var logger *log.Logger
@@ -157,7 +157,7 @@ func reorderSubcommand(args []string) (string, []string, bool) {
 		"-d": true, "--dir": true, "-t": true, "--timeout": true,
 		"-m": true, "--model": true, "--opus": true, "--sonnet": true,
 		"--haiku": true, "--mode": true, "--tier": true,
-		"--system-prompt": true, "--constraint": true,
+		"--system-prompt": true, "--constraint": true, "--mcp-config": true,
 	}
 	known := map[string]bool{
 		"run": true, "start": true, "status": true, "result": true,
@@ -228,6 +228,7 @@ Flags:
   --mode MODE         Set permission mode
   --system-prompt TEXT  System prompt appended to constrain the golem
   --constraint KEY      Predefined constraint (repeatable): readonly, no-create, plan-first, scope:<path>
+  --mcp-config FILE     Attach MCP servers to golems only (claude --mcp-config); host session untouched
   --json              JSON output format
 `)
 }
@@ -766,7 +767,7 @@ func extractPrompts(args []string) []string {
 		"-m": true, "--model": true,
 		"--opus": true, "--sonnet": true, "--haiku": true,
 		"--mode": true, "--tier": true,
-		"--system-prompt": true, "--constraint": true,
+		"--system-prompt": true, "--constraint": true, "--mcp-config": true,
 	}
 
 	var prompts []string

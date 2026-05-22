@@ -27,6 +27,8 @@ type SessionArgs struct {
 	// WorkDir is the -d flag. When non-empty the process working directory is
 	// changed to this path before exec.
 	WorkDir string
+	// MCPConfig is the --mcp-config flag: golem-scoped MCP servers (path or JSON).
+	MCPConfig string
 	// Passthrough contains all flags and positional arguments not consumed by
 	// GoLeM. They are forwarded verbatim to the claude binary.
 	Passthrough []string
@@ -101,14 +103,19 @@ func SessionCmd(cfg *config.Config, args []string, debugLog io.Writer) (*Session
 				sa.PermissionMode = args[i+1]
 				i++
 			}
+		case "--mcp-config":
+			if i+1 < len(args) {
+				sa.MCPConfig = args[i+1]
+				i++
+			}
 		default:
-			// Unknown flag/arg — pass through to claude.
+			// Unknown flag/arg - pass through to claude.
 			passthroughArgs = append(passthroughArgs, arg)
 		}
 	}
 	sa.Passthrough = passthroughArgs
 
-	// Determine model slots — start from config defaults.
+	// Determine model slots - start from config defaults.
 	opusModel := cfg.OpusModel
 	sonnetModel := cfg.SonnetModel
 	haikuModel := cfg.HaikuModel
@@ -166,7 +173,7 @@ func SessionCmd(cfg *config.Config, args []string, debugLog io.Writer) (*Session
 		"API_TIMEOUT_MS="+cfg.ZaiAPITimeoutMs,
 	)
 
-	// Build argv for claude (interactive session — no -p, --output-format, etc.).
+	// Build argv for claude (interactive session - no -p, --output-format, etc.).
 	argv := []string{"claude"}
 
 	// Append --effort flag if configured.
@@ -184,6 +191,19 @@ func SessionCmd(cfg *config.Config, args []string, debugLog io.Writer) (*Session
 		argv = append(argv, "--dangerously-skip-permissions")
 	} else if sa.PermissionMode != "" {
 		argv = append(argv, "--permission-mode", sa.PermissionMode)
+	}
+
+	// Golem-scoped MCP servers: flag overrides config default; never touches
+	// the host ~/.claude/settings.json.
+	mcpConfig := sa.MCPConfig
+	if mcpConfig == "" {
+		mcpConfig = cfg.MCPConfig
+	}
+	if mcpConfig != "" {
+		argv = append(argv, "--mcp-config", mcpConfig)
+		if cfg.MCPStrict {
+			argv = append(argv, "--strict-mcp-config")
+		}
 	}
 
 	// Append passthrough args.

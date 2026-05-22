@@ -52,6 +52,8 @@ type Config struct {
 	ExcludeDynamicSections bool           // --exclude-dynamic-system-prompt-sections
 	Models                 map[string]int // per-model concurrency limits from [models] section
 	SystemPrompt           string         // optional default system prompt for all invocations
+	MCPConfig              string         // path/JSON of MCP servers attached to golems only (claude --mcp-config)
+	MCPStrict              bool           // golems use only MCPConfig servers, ignoring global (claude --strict-mcp-config)
 }
 
 // Options allows CLI flags to override config values after load.
@@ -259,6 +261,10 @@ func parseGlobalKey(key, value string, cfg *Config) error {
 		cfg.ExcludeDynamicSections = value == "true"
 	case "system_prompt":
 		cfg.SystemPrompt = value
+	case "mcp_config":
+		cfg.MCPConfig = value
+	case "mcp_strict":
+		cfg.MCPStrict = value == "true"
 	}
 	// Unknown keys are ignored
 	return nil
@@ -335,6 +341,13 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := getenv("GLM_SYSTEM_PROMPT"); v != "" {
 		cfg.SystemPrompt = v
+	}
+	if v := getenv("GLM_MCP_CONFIG"); v != "" {
+		cfg.MCPConfig = v
+	}
+	if v := getenv("GLM_MCP_STRICT"); v != "" {
+		lower := strings.ToLower(v)
+		cfg.MCPStrict = lower == "true" || lower == "1"
 	}
 	if v := getenv("GLM_EXCLUDE_DYNAMIC_SECTIONS"); v != "" {
 		lower := strings.ToLower(v)

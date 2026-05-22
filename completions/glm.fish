@@ -45,6 +45,7 @@ complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -l unsafe -d "By
 complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -l mode -d "Permission mode" -x -a "bypassPermissions acceptEdits default plan"
 complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -l system-prompt -d "Append system prompt" -x
 complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -l constraint -d "Add a behavior constraint" -x -a "readonly no-create plan-first scope:"
+complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -l mcp-config -d "Attach MCP servers to golems only" -r -F
 complete -c glm -n "__fish_seen_subcommand_from $exec_commands" -l json -d "JSON output format"
 
 # chain-only flag

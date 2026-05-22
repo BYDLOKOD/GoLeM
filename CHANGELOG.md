@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.3.0 - 2026-05-22
+
+- Golem-scoped MCP servers. Golems can now be given extra MCP servers (for
+  example Z.AI's image-vision MCP) without registering them in the host
+  `~/.claude/settings.json`, so the orchestrating Claude Code session is left
+  untouched. The servers are passed to each golem's `claude` subprocess via
+  `--mcp-config`, configurable three ways:
+  - `mcp_config` in `glm.toml` (a path or inline JSON; default for all golems);
+  - the `--mcp-config FILE` flag on `run`/`start`/`chain`/`session` (per-call,
+    overrides the config default);
+  - the `GLM_MCP_CONFIG` environment variable.
+  `mcp_strict = true` (or `GLM_MCP_STRICT`) adds `--strict-mcp-config`, so a
+  golem uses only the supplied servers and ignores all other MCP configuration.
+
 ## v1.2.3 - 2026-05-22
 
 - Global flags placed before the subcommand are now tolerated. Previously

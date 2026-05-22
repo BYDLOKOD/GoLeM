@@ -199,6 +199,12 @@ func BuildClaudeConfig(cfg *config.Config, flags *Flags, jobDir string) (claude.
 		return claude.Config{}, err
 	}
 
+	// Golem-scoped MCP servers: per-invocation flag overrides the config default.
+	mcpConfig := flags.MCPConfig
+	if mcpConfig == "" {
+		mcpConfig = cfg.MCPConfig
+	}
+
 	return claude.Config{
 		ZAIAPIKey:              cfg.ZaiAPIKey,
 		ZAIBaseURL:             cfg.ZaiBaseURL,
@@ -215,5 +221,7 @@ func BuildClaudeConfig(cfg *config.Config, flags *Flags, jobDir string) (claude.
 		Effort:                 cfg.Effort,
 		ExcludeDynamicSections: cfg.ExcludeDynamicSections,
 		SystemPrompt:           finalSystemPrompt,
+		MCPConfig:              mcpConfig,
+		MCPStrict:              cfg.MCPStrict,
 	}, nil
 }

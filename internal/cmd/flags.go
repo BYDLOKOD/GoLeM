@@ -20,6 +20,7 @@ type Flags struct {
 	Tier           string // "light", "medium", "heavy", "auto", or "" (auto)
 	SystemPrompt   string
 	Constraints    []string
+	MCPConfig      string // --mcp-config: golem-scoped MCP servers (path or JSON)
 	Prompt         string
 }
 
@@ -117,6 +118,13 @@ func ParseFlags(args []string) (*Flags, error) {
 				return nil, fmt.Errorf(`err:user "Missing value for --constraint flag"`)
 			}
 			f.Constraints = append(f.Constraints, args[i+1])
+			i++
+
+		case "--mcp-config":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf(`err:user "Missing value for --mcp-config flag"`)
+			}
+			f.MCPConfig = args[i+1]
 			i++
 
 		default:

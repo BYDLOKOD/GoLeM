@@ -1200,6 +1200,39 @@ func TestParseTOMLSystemPromptEmpty(t *testing.T) {
 	}
 }
 
+// ---- Scenario: TOML with mcp_config / mcp_strict keys is parsed correctly ----
+
+func TestParseTOMLMCPConfig(t *testing.T) {
+	toml := `mcp_config = "/home/user/.config/GoLeM/golem-mcp.json"
+mcp_strict = true
+`
+	cfg := &Config{}
+	if err := parseTOML(toml, cfg); err != nil {
+		t.Fatalf("parseTOML: %v", err)
+	}
+
+	if cfg.MCPConfig != "/home/user/.config/GoLeM/golem-mcp.json" {
+		t.Errorf("MCPConfig = %q, want the configured path", cfg.MCPConfig)
+	}
+	if !cfg.MCPStrict {
+		t.Errorf("MCPStrict = false, want true")
+	}
+}
+
+func TestParseTOMLMCPConfigDefaults(t *testing.T) {
+	cfg := &Config{}
+	if err := parseTOML(`model = "glm-5.1"`, cfg); err != nil {
+		t.Fatalf("parseTOML: %v", err)
+	}
+
+	if cfg.MCPConfig != "" {
+		t.Errorf("MCPConfig = %q, want empty when not set", cfg.MCPConfig)
+	}
+	if cfg.MCPStrict {
+		t.Errorf("MCPStrict = true, want false when not set")
+	}
+}
+
 // ---- Scenario: GLM_SYSTEM_PROMPT env var overrides TOML value ----
 
 func TestEnvGLMSystemPromptOverride(t *testing.T) {

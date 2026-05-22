@@ -23,7 +23,7 @@
 
 ---
 
-![Architecture](docs/architecture.svg?v=5)
+![Architecture](docs/architecture.svg?v=6)
 
 ## What is this, in one paragraph
 

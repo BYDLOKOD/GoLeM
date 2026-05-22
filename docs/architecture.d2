@@ -1,35 +1,37 @@
-sequence: {
+direction: down
+
+sequence: "" {
   shape: sequence_diagram
 
   dev_user: Developer
   ops_glm: "glm\nCLI"
-  px_proxy: "glm\nproxy"
-  j_claude: "claude\nsubprocess"
+  ops_proxy: "glm\nproxy"
+  ex_claude: "claude\nsubprocess"
   ex_zai: "Z.AI\nGLM-5.1"
   db_state: "~/.claude/\nsubagents/"
 
   dev_user -> ops_glm: "glm run / chain / pipeline\n(or MCP tool call)"
 
   ops_glm -> ops_glm: "load config\n+ validate"
-  ops_glm -> px_proxy: "ensure proxy\n(auto-start)"
+  ops_glm -> ops_proxy: "ensure proxy\n(auto-start)"
   ops_glm -> db_state: "create job dir"
 
   agents: {
     label: "loop [each step]"
 
-    ops_glm -> j_claude: "fork + env\n(BASE_URL = proxy)"
+    ops_glm -> ex_claude: "fork + env\n(BASE_URL = proxy)"
 
     work: {
       label: "loop [agent working]"
 
-      j_claude -> px_proxy: "Anthropic HTTP"
-      px_proxy -> ex_zai: "rate-limit + retry"
-      ex_zai -> px_proxy: response
-      px_proxy -> j_claude: response
-      j_claude -> j_claude: "read / edit\nrun / test"
+      ex_claude -> ops_proxy: "Anthropic HTTP"
+      ops_proxy -> ex_zai: "rate-limit\n+ retry"
+      ex_zai -> ops_proxy: response
+      ops_proxy -> ex_claude: response
+      ex_claude -> ex_claude: "read / edit\nrun / test"
     }
 
-    j_claude -> ops_glm: "exit + JSON"
+    ex_claude -> ops_glm: "exit + JSON"
     ops_glm -> db_state: "stdout, changelog\nraw.json"
   }
 

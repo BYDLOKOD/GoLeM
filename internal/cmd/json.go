@@ -251,12 +251,15 @@ func StatusJSON(subagentsRoot, currentProjectID, jobID string, w io.Writer) erro
 	// Read status
 	status := string(job.ReadStatus(jobDir))
 
-	// Reconcile if status is "running" and jobID contains "dead" (test marker for stale job)
-	// This is a heuristic to distinguish between the two test cases:
-	// - TestStatusJsonOutputsJobStatusObject: normal job, expects status as written
-	// - TestStatusJsonOnStaleJobReconcilesBeforeOutput: jobID contains "dead", expects reconciliation
-	if status == "running" && strings.Contains(jobID, "dead") {
-		status, _ = job.CheckJobPID(jobDir)
+	// A "running" status is only trustworthy while the process is still alive.
+	// CheckJobPID verifies liveness via signal 0 and, when the process is gone,
+	// flips the on-disk status to "failed" before we report it -- otherwise a
+	// crashed job would be reported as "running" forever. On a reconcile error
+	// we keep the last known status rather than masking it.
+	if status == "running" {
+		if reconciled, err := job.CheckJobPID(jobDir); err == nil {
+			status = reconciled
+		}
 	}
 
 	var startedAt string

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -217,7 +218,11 @@ func TestStatusJsonOutputsJobStatusObject(t *testing.T) {
 	root := t.TempDir()
 	jobID := "job-20260227-142800-e5f6a7b8"
 	dir := makeJobDir(t, root, "proj", jobID, "running")
-	writeFile(t, dir, "pid.txt", "48201")
+	// Use this test process's own PID so the job is genuinely alive: StatusJSON
+	// reconciles "running" jobs by liveness, so a dead PID would (correctly)
+	// flip the status to "failed". A live PID proves the still-running path.
+	livePID := os.Getpid()
+	writeFile(t, dir, "pid.txt", strconv.Itoa(livePID))
 	writeFile(t, dir, "started_at.txt", "2026-02-27T14:28:00+03:00")
 
 	var buf bytes.Buffer
@@ -234,8 +239,8 @@ func TestStatusJsonOutputsJobStatusObject(t *testing.T) {
 	if obj.Status != "running" {
 		t.Errorf("status: got %q, want %q", obj.Status, "running")
 	}
-	if obj.PID != 48201 {
-		t.Errorf("pid: got %d, want 48201", obj.PID)
+	if obj.PID != livePID {
+		t.Errorf("pid: got %d, want %d", obj.PID, livePID)
 	}
 	if obj.StartedAt != "2026-02-27T14:28:00+03:00" {
 		t.Errorf("started_at: got %q, want %q", obj.StartedAt, "2026-02-27T14:28:00+03:00")
@@ -432,7 +437,7 @@ func TestResultJsonOnFailedJobIncludesStderrAndExitCode(t *testing.T) {
 	jobID := "job-20260227-141500-c3d4e5f6"
 	dir := makeJobDir(t, root, "proj", jobID, "failed")
 
-	stderrContent := "Error: permission denied — cannot write to src/db/pool.go\n[GoLeM] Job failed with exit code 1"
+	stderrContent := "Error: permission denied - cannot write to src/db/pool.go\n[GoLeM] Job failed with exit code 1"
 	writeFile(t, dir, "stdout.txt", "")
 	writeFile(t, dir, "stderr.txt", stderrContent)
 	writeFile(t, dir, "changelog.txt", "(no file changes)")
@@ -476,7 +481,7 @@ func TestResultJsonOnFailedJobIncludesStderrAndExitCode(t *testing.T) {
 func TestStatusJsonOnStaleJobReconcilesBeforeOutput(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	jobID := "job-20260227-080000-dead1234"
+	jobID := "job-20260227-080000-aabbccdd"
 	dir := makeJobDir(t, root, "proj", jobID, "running")
 	// Write a PID that cannot be alive (very large/invalid).
 	writeFile(t, dir, "pid.txt", "999999999")

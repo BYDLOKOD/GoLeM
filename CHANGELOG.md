@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.5.1 - 2026-05-23
+
+Nine correctness fixes; no new features. Each shipped test-first, reviewed by
+an adversarial critic, and verified under the race detector.
+
+- **Fixed: `status --json` reported a crashed job as `running` forever.** The
+  staleness check was gated on a leftover test marker (the job ID containing
+  "dead"), so real jobs were never reconciled. It now verifies PID liveness and
+  reports `failed` for a dead process.
+- **Fixed: `glm clean` removed nothing.** It walked only the legacy flat
+  layout, but jobs live under `<project-id>/<job-id>/`. It now walks both
+  layouts and prunes a project directory once cleaning empties it.
+- **Fixed: one malformed job aborted reconciliation of all others** and left
+  the slot counter wrong. Per-job errors are now logged and skipped.
+- **Fixed: `proxy_port` was ignored.** `EnsureRunning` hard-coded `--port 0`,
+  so a configured port did nothing and every proxy restart bound a new random
+  port -- the root cause of intermittent `API Error: ... (ConnectionRefused)`
+  in long-lived MCP sessions. A fixed `proxy_port` is now honored end-to-end
+  and the daemon rebinds the same port across idle-timeout restarts.
+- **Fixed: `glm doctor` reported a healthy API as unreachable.** Only HTTP 200
+  counted as reachable, but an unauthenticated HEAD on the API returns 4xx. Any
+  completed HTTP response now counts as reachable; only a connection-level
+  error is a failure, and it reports the real error instead of always "timed
+  out".
+- **Fixed: DAG pipelines could leak goroutines on cancellation** (the
+  completion buffer was undersized for bounded schedulers), and a gate step
+  with no validation rule silently passed everything instead of erroring.
+- **Fixed: a TOML value containing quotes could be corrupted** -- the config
+  parser stripped a character set rather than a matched surrounding pair.
+- **Hardened: the final job status is written atomically** (tmp+rename), so a
+  concurrent `status --json` reader never observes a truncated status file.
+
 ## v1.5.0 - 2026-05-22
 
 - **GoLeM is now a Claude Code skill instead of a CLAUDE.md injection.**

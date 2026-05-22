@@ -18,6 +18,7 @@ func installOpts(t *testing.T, tmpDir string, input string) (cmd.InstallOptions,
 	configDir := filepath.Join(tmpDir, "config")
 	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
 	subagentsDir := filepath.Join(tmpDir, "subagents")
+	skillsDir := filepath.Join(tmpDir, "skills")
 	var output bytes.Buffer
 
 	return cmd.InstallOptions{
@@ -25,6 +26,7 @@ func installOpts(t *testing.T, tmpDir string, input string) (cmd.InstallOptions,
 		ConfigDir:    configDir,
 		ClaudeMDPath: claudeMD,
 		SubagentsDir: subagentsDir,
+		SkillsDir:    skillsDir,
 		Version:      "test-1.0.0",
 		In:           strings.NewReader(input),
 		Out:          &output,
@@ -36,12 +38,14 @@ func uninstallOpts(t *testing.T, tmpDir string, input string) (cmd.UninstallOpti
 	configDir := filepath.Join(tmpDir, "config")
 	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
 	subagentsDir := filepath.Join(tmpDir, "subagents")
+	skillsDir := filepath.Join(tmpDir, "skills")
 	var output bytes.Buffer
 
 	return cmd.UninstallOptions{
 		ConfigDir:    configDir,
 		ClaudeMDPath: claudeMD,
 		SubagentsDir: subagentsDir,
+		SkillsDir:    skillsDir,
 		In:           strings.NewReader(input),
 		Out:          &output,
 	}, &output
@@ -279,26 +283,30 @@ func TestInstallConfigJSONContainsCloneDirForSourceInstall(t *testing.T) {
 	}
 }
 
-// ─── AC5: Injects GLM instructions into CLAUDE.md ───────────────────────────────
+// ─── AC5: Installs the golem skill (no CLAUDE.md injection) ──────────────────────
 
-func TestInstallCreatesCLAUDEMDWhenNotExists(t *testing.T) {
+func TestInstallWritesGolemSkill(t *testing.T) {
 	tmpDir := t.TempDir()
 	opts, _ := installOpts(t, tmpDir, "sk-key\nbypassPermissions\n")
 
-	err := cmd.InstallCmd(opts)
-	if err != nil {
+	if err := cmd.InstallCmd(opts); err != nil {
 		t.Fatalf("InstallCmd: %v", err)
 	}
 
-	data, err := os.ReadFile(opts.ClaudeMDPath)
+	skill := filepath.Join(opts.SkillsDir, "golem", "SKILL.md")
+	data, err := os.ReadFile(skill)
 	if err != nil {
-		t.Fatalf("read CLAUDE.md: %v", err)
+		t.Fatalf("read golem skill: %v", err)
 	}
-	if !strings.Contains(string(data), "<!-- GLM-SUBAGENT-START -->") {
-		t.Error("CLAUDE.md missing GLM-SUBAGENT-START marker")
+	if !strings.Contains(string(data), "name: golem") {
+		t.Error("skill missing the 'name: golem' frontmatter")
 	}
-	if !strings.Contains(string(data), "<!-- GLM-SUBAGENT-END -->") {
-		t.Error("CLAUDE.md missing GLM-SUBAGENT-END marker")
+
+	// The install must NOT inject the legacy section into CLAUDE.md anymore.
+	if md, err := os.ReadFile(opts.ClaudeMDPath); err == nil {
+		if strings.Contains(string(md), "<!-- GLM-SUBAGENT-START -->") {
+			t.Error("CLAUDE.md should no longer carry the GLM section; the skill replaces it")
+		}
 	}
 }
 
@@ -341,7 +349,7 @@ Old content here
 	}
 }
 
-func TestInstallAppendsGLMSectionToExistingFile(t *testing.T) {
+func TestInstallLeavesUserCLAUDEMDIntactAndWritesSkill(t *testing.T) {
 	tmpDir := t.TempDir()
 	existingContent := `# System-Wide Instructions
 ## My Custom Rules
@@ -356,18 +364,23 @@ func TestInstallAppendsGLMSectionToExistingFile(t *testing.T) {
 
 	opts, _ := installOpts(t, tmpDir, "sk-key\nbypassPermissions\n")
 
-	err := cmd.InstallCmd(opts)
-	if err != nil {
+	if err := cmd.InstallCmd(opts); err != nil {
 		t.Fatalf("InstallCmd: %v", err)
 	}
 
+	// User content is untouched; no GLM section is injected.
 	data, _ := os.ReadFile(opts.ClaudeMDPath)
-	content := string(data)
-	if !strings.Contains(content, "## My Custom Rules") {
-		t.Error("CLAUDE.md lost original content")
+	md := string(data)
+	if !strings.Contains(md, "## My Custom Rules") {
+		t.Error("CLAUDE.md lost the user's original content")
 	}
-	if !strings.Contains(content, "<!-- GLM-SUBAGENT-START -->") {
-		t.Error("CLAUDE.md missing GLM section")
+	if strings.Contains(md, "<!-- GLM-SUBAGENT-START -->") {
+		t.Error("install should not inject a GLM section into CLAUDE.md")
+	}
+
+	// The skill is written instead.
+	if _, err := os.Stat(filepath.Join(opts.SkillsDir, "golem", "SKILL.md")); err != nil {
+		t.Errorf("golem skill not written: %v", err)
 	}
 }
 
@@ -643,89 +656,9 @@ func TestInstallOverExistingInstallationReRunsSetup(t *testing.T) {
 		t.Errorf("second install API key: got %q, want 'sk-new-key'", string(apiKey2))
 	}
 
-	// CLAUDE.md should still have GLM section
-	claudeMD, _ := os.ReadFile(opts2.ClaudeMDPath)
-	if !strings.Contains(string(claudeMD), "<!-- GLM-SUBAGENT-START -->") {
-		t.Error("CLAUDE.md should still have GLM section")
-	}
-}
-
-// ─── InjectClaudeMD helper tests ───────────────────────────────────────────────
-
-func TestInjectClaudeMDCreatesFile(t *testing.T) {
-	t.Parallel()
-	tmpDir := t.TempDir()
-	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
-
-	template := "<!-- GLM-SUBAGENT-START -->\nTest content\n<!-- GLM-SUBAGENT-END -->"
-
-	err := cmd.InjectClaudeMD(claudeMD, template)
-	if err != nil {
-		t.Fatalf("InjectClaudeMD: %v", err)
-	}
-
-	data, _ := os.ReadFile(claudeMD)
-	if !strings.Contains(string(data), "Test content") {
-		t.Errorf("CLAUDE.md: got %q", string(data))
-	}
-}
-
-func TestInjectClaudeMDReplacesSection(t *testing.T) {
-	t.Parallel()
-	tmpDir := t.TempDir()
-	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
-
-	os.WriteFile(claudeMD, []byte(`Header
-<!-- GLM-SUBAGENT-START -->
-Old content
-<!-- GLM-SUBAGENT-END -->
-Footer
-`), 0o644)
-
-	template := "<!-- GLM-SUBAGENT-START -->\nNew content\n<!-- GLM-SUBAGENT-END -->"
-
-	err := cmd.InjectClaudeMD(claudeMD, template)
-	if err != nil {
-		t.Fatalf("InjectClaudeMD: %v", err)
-	}
-
-	data, _ := os.ReadFile(claudeMD)
-	content := string(data)
-	if !strings.Contains(content, "Header") {
-		t.Error("lost content before markers")
-	}
-	if !strings.Contains(content, "Footer") {
-		t.Error("lost content after markers")
-	}
-	if strings.Contains(content, "Old content") {
-		t.Error("old content should be replaced")
-	}
-	if !strings.Contains(content, "New content") {
-		t.Error("new content should be present")
-	}
-}
-
-func TestInjectClaudeMDAppendsWhenNoMarkers(t *testing.T) {
-	t.Parallel()
-	tmpDir := t.TempDir()
-	claudeMD := filepath.Join(tmpDir, "CLAUDE.md")
-
-	os.WriteFile(claudeMD, []byte("Existing content\n"), 0o644)
-
-	template := "<!-- GLM-SUBAGENT-START -->\nNew section\n<!-- GLM-SUBAGENT-END -->"
-
-	err := cmd.InjectClaudeMD(claudeMD, template)
-	if err != nil {
-		t.Fatalf("InjectClaudeMD: %v", err)
-	}
-
-	data, _ := os.ReadFile(claudeMD)
-	content := string(data)
-	if !strings.Contains(content, "Existing content") {
-		t.Error("existing content should be preserved")
-	}
-	if !strings.Contains(content, "New section") {
-		t.Error("new section should be appended")
+	// The golem skill should be present after a re-run.
+	if _, err := os.Stat(filepath.Join(opts2.SkillsDir, "golem", "SKILL.md")); err != nil {
+		t.Errorf("golem skill missing after re-run: %v", err)
 	}
 }
 

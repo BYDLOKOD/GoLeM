@@ -126,12 +126,14 @@ The interactive installer completes these steps in order:
 1. Prompts for your Z.AI API key and saves it to `~/.config/GoLeM/zai_api_key` (mode 0600)
 2. Prompts for permission mode and writes `~/.config/GoLeM/glm.toml`
 3. Writes `~/.config/GoLeM/config.json` with install metadata
-4. Injects the GLM subagent section into `~/.claude/CLAUDE.md` between `<!-- GLM-SUBAGENT-START -->` and `<!-- GLM-SUBAGENT-END -->` markers
+4. Installs the `golem` Claude Code skill at `~/.claude/skills/golem/SKILL.md` (the operating manual loads on demand, triggered by "golem"/"голем" or delegation intent) and removes any legacy GLM section from `~/.claude/CLAUDE.md` left by older versions
 5. Creates `~/.claude/subagents/` directory
 6. Registers the MCP server (`golem`) under `mcpServers` in `~/.claude/settings.json`
 
-Re-running `_install` is idempotent: existing markers are replaced, existing
-MCP entries are updated, and you can choose to keep your existing API key.
+Re-running `_install` is idempotent: the skill is rewritten, the MCP entry is
+updated, and you can choose to keep your existing API key. Earlier versions
+injected the instructions into `~/.claude/CLAUDE.md`; the skill replaces that so
+the manual no longer occupies context in every session.
 
 ### Manual installation (without interactive installer)
 

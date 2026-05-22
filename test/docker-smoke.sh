@@ -78,8 +78,8 @@ fi
 # ---- Validate install side-effects ----
 step "settings.json has golem entry" \
     bash -c 'grep -q "golem" "$HOME/.claude/settings.json"'
-step "CLAUDE.md has GLM markers" \
-    bash -c 'grep -q "GLM-SUBAGENT-START" "$HOME/.claude/CLAUDE.md"'
+step "golem skill installed" \
+    bash -c 'grep -q "name: golem" "$HOME/.claude/skills/golem/SKILL.md"'
 step "subagents dir created" \
     bash -c 'test -d "$HOME/.claude/subagents"'
 step "config.json written" \
@@ -174,8 +174,8 @@ else
     cat /tmp/uninstall.out /tmp/uninstall.err
 fi
 
-step "uninstall removed GLM section" \
-    bash -c '! grep -q "GLM-SUBAGENT-START" "$HOME/.claude/CLAUDE.md" 2>/dev/null'
+step "uninstall removed golem skill" \
+    bash -c '! test -e "$HOME/.claude/skills/golem/SKILL.md"'
 step "uninstall removed mcp entry" \
     bash -c '! grep -q "golem" "$HOME/.claude/settings.json" 2>/dev/null'
 step "uninstall kept mounted key" \

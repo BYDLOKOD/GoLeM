@@ -29,7 +29,7 @@ import (
 	"github.com/veschin/GoLeM/internal/slot"
 )
 
-const version = "1.4.0"
+const version = "1.5.0"
 
 // logger is the global structured logger, initialized in run().
 var logger *log.Logger
@@ -1016,6 +1016,7 @@ func cmdUpdate() int {
 		ConfigDir:    configDir,
 		CloneDir:     cloneDir,
 		ClaudeMDPath: claudeMDPath,
+		SkillsDir:    filepath.Join(home, ".claude", "skills"),
 		Out:          os.Stdout,
 		ErrOut:       os.Stderr,
 	}
@@ -1095,6 +1096,7 @@ func cmdInstall() int {
 		ConfigDir:    filepath.Join(home, ".config", "GoLeM"),
 		ClaudeMDPath: filepath.Join(home, ".claude", "CLAUDE.md"),
 		SubagentsDir: filepath.Join(home, ".claude", "subagents"),
+		SkillsDir:    filepath.Join(home, ".claude", "skills"),
 		Version:      version,
 		In:           os.Stdin,
 		Out:          os.Stdout,
@@ -1116,6 +1118,7 @@ func cmdUninstall() int {
 		ConfigDir:    filepath.Join(home, ".config", "GoLeM"),
 		ClaudeMDPath: filepath.Join(home, ".claude", "CLAUDE.md"),
 		SubagentsDir: filepath.Join(home, ".claude", "subagents"),
+		SkillsDir:    filepath.Join(home, ".claude", "skills"),
 		In:           os.Stdin,
 		Out:          os.Stdout,
 	}

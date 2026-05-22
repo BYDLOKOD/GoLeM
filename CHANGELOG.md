@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.5.0 - 2026-05-22
+
+- **GoLeM is now a Claude Code skill instead of a CLAUDE.md injection.**
+  `_install` writes the operating manual to `~/.claude/skills/golem/SKILL.md`
+  (frontmatter `name: golem`) and removes any legacy `<!-- GLM-SUBAGENT-* -->`
+  section it previously injected into `~/.claude/CLAUDE.md`. The skill loads on
+  demand - triggered when the user says "golem"/"голем" or asks to delegate -
+  rather than occupying context in every session. `_uninstall` removes the
+  skill, and `update` rewrites it. The skill is detailed and English-only so a
+  golem is driven without guesswork.
+- Removed the now-dead `InjectClaudeMD` / `glmSubagentTemplate` /
+  `loadGLMTemplate` code paths that the CLAUDE.md injection used.
+
 ## v1.4.0 - 2026-05-22
 
 - **Fixed: golem output was blank on current Claude Code.** Recent `claude`

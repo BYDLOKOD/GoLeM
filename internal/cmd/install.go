@@ -20,10 +20,14 @@ type InstallOptions struct {
 	CloneDir string
 	// ConfigDir is the GoLeM config directory (default: ~/.config/GoLeM).
 	ConfigDir string
-	// ClaudeMDPath is the target CLAUDE.md file (default: ~/.claude/CLAUDE.md).
+	// ClaudeMDPath is the legacy CLAUDE.md file whose GLM section is removed on
+	// install (migration; default: ~/.claude/CLAUDE.md).
 	ClaudeMDPath string
 	// SubagentsDir is the subagents directory (default: ~/.claude/subagents).
 	SubagentsDir string
+	// SkillsDir is the Claude Code skills root where the golem skill is written
+	// (default: ~/.claude/skills).
+	SkillsDir string
 	// Version is the current glm version string (e.g. "1.0.0").
 	Version string
 	// In is the reader used for interactive prompts (defaults to os.Stdin).
@@ -63,53 +67,6 @@ func (p *prompter) promptYN(message string) (bool, error) {
 	}
 	return strings.ToLower(resp) == "y", nil
 }
-
-// glmSubagentTemplate is the GLM section content to inject into CLAUDE.md.
-// The actual template content is loaded from CloneDir/CLAUDE.md if available.
-const glmSubagentTemplate = `<!-- GLM-SUBAGENT-START -->
-## GLM Subagent (GLM-5 via Z.AI) - MANDATORY
-
-You have access to ` + "`glm`" + ` - a tool that spawns parallel Claude Code agents powered by GLM-5 via Z.AI.
-` + "GLM agents are free, full Claude Code instances - they read/write files, run tests, use MCP servers and tools." + `
-
-### When to delegate to GLM
-- **Implementation work**: coding, refactoring, file edits, test writing
-- **Parallel independent tasks**: launch multiple agents with ` + "`glm start`" + `
-- **Sequential pipelines**: dependent steps with ` + "`glm chain`" + `
-- **NOT for**: tasks requiring user interaction or approval
-
-### Commands
-` + "```" + `
-glm run -d <dir> -t <sec> "prompt"    # sync: blocks until done, prints result
-glm start -d <dir> -t <sec> "prompt"  # async: prints job ID, runs in background
-glm chain -d <dir> "step1" "step2"    # sequential: stdout of step N -> prompt of step N+1
-glm status <JOB_ID>                   # check: queued/running/done/failed/timeout
-glm result <JOB_ID>                   # read job stdout
-glm log    <JOB_ID>                   # read file changelog (edits, writes, deletes)
-glm list                              # list all jobs with proxy stats
-glm kill   <JOB_ID>                   # stop a running job
-` + "```" + `
-
-### Rules
-- **Always set -t (timeout)**: agents can hang. Use ` + "`-t 300`" + ` (5 min) or ` + "`-t 600`" + ` (10 min).
-- **Always set -d (directory)**: agents work in that directory. Use absolute paths.
-- **Flags before prompt**: ` + "`glm start -d /path -t 300 \"your prompt\"`" + ` - prompt is positional, must come last.
-- **Check results**: after ` + "`glm start`" + `, poll with ` + "`glm list`" + ` or ` + "`glm status <ID>`" + `, then read with ` + "`glm result <ID>`" + `.
-- **Rate limiting**: per-model concurrency limits are configured via the `+"`[models]`"+` section in glm.toml. No global limit is enforced.
-- **No mocks, no stubs**: GLM agents write real code in real directories.
-
-### Multi-agent pattern
-` + "```bash" + `
-# Launch parallel agents
-JOB1=$(glm start -d /path -t 300 "task 1")
-JOB2=$(glm start -d /path -t 300 "task 2")
-# Monitor
-glm list
-# Read results when done
-glm result $JOB1
-glm result $JOB2
-` + "```" + `
-<!-- GLM-SUBAGENT-END -->`
 
 // glmSectionStart is the start marker for the GLM section in CLAUDE.md.
 const glmSectionStart = "<!-- GLM-SUBAGENT-START -->"
@@ -225,10 +182,15 @@ func InstallCmd(opts InstallOptions) error {
 	// Step 4: Print binary path info.
 	_, _ = fmt.Fprintf(out, "Binary: %s\n", glmExecutablePath())
 
-	// Step 5: Inject GLM section into CLAUDE.md.
-	template := loadGLMTemplate(opts.CloneDir)
-	if err := InjectClaudeMD(opts.ClaudeMDPath, template); err != nil {
-		return fmt.Errorf("inject CLAUDE.md: %w", err)
+	// Step 5: Install the golem skill. Remove any legacy GLM section from
+	// CLAUDE.md first (migration from versions that injected the manual there),
+	// then write the global skill so the manual loads on demand instead of
+	// occupying context in every session.
+	if err := RemoveClaudeMDSection(opts.ClaudeMDPath); err != nil {
+		return fmt.Errorf("remove legacy CLAUDE.md section: %w", err)
+	}
+	if err := WriteGolemSkill(opts.SkillsDir); err != nil {
+		return fmt.Errorf("write golem skill: %w", err)
 	}
 
 	// Step 6: Create subagents directory.
@@ -263,40 +225,16 @@ func glmExecutablePath() string {
 	return real
 }
 
-// loadGLMTemplate reads the GLM section from CloneDir's CLAUDE.md global
-// file if available, otherwise returns a minimal default template.
-func loadGLMTemplate(cloneDir string) string {
-	if cloneDir == "" {
-		return glmSubagentTemplate
-	}
-	// Try to read the template from ~/.claude/CLAUDE.md or from the repo's template file.
-	candidates := []string{
-		filepath.Join(cloneDir, "CLAUDE.md"),
-	}
-	for _, path := range candidates {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		// Extract the GLM section.
-		content := string(data)
-		startIdx := strings.Index(content, glmSectionStart)
-		endIdx := strings.Index(content, glmSectionEnd)
-		if startIdx >= 0 && endIdx > startIdx {
-			return content[startIdx : endIdx+len(glmSectionEnd)]
-		}
-	}
-	return glmSubagentTemplate
-}
-
 // UninstallOptions configures the uninstall command.
 type UninstallOptions struct {
 	// ConfigDir is the GoLeM config directory.
 	ConfigDir string
-	// ClaudeMDPath is the CLAUDE.md file containing the GLM section.
+	// ClaudeMDPath is the CLAUDE.md file whose legacy GLM section is removed.
 	ClaudeMDPath string
 	// SubagentsDir is the subagents directory.
 	SubagentsDir string
+	// SkillsDir is the Claude Code skills root holding the golem skill.
+	SkillsDir string
 	// In is the reader for interactive prompts.
 	In io.Reader
 	// Out is the writer for prompt output.
@@ -322,7 +260,10 @@ func UninstallCmd(opts UninstallOptions) error {
 	// Create a shared prompter to avoid losing buffered input.
 	p := newPrompter(in, out)
 
-	// Step 1: Remove GLM section from CLAUDE.md.
+	// Step 1: Remove the golem skill and any legacy GLM section from CLAUDE.md.
+	if err := RemoveGolemSkill(opts.SkillsDir); err != nil {
+		return fmt.Errorf("remove golem skill: %w", err)
+	}
 	if err := RemoveClaudeMDSection(opts.ClaudeMDPath); err != nil {
 		return fmt.Errorf("remove CLAUDE.md section: %w", err)
 	}
@@ -384,8 +325,10 @@ type UpdateOptions struct {
 	ConfigDir string
 	// CloneDir is the git repository to update (only used for source installs).
 	CloneDir string
-	// ClaudeMDPath is the CLAUDE.md to re-inject after pulling.
+	// ClaudeMDPath is the CLAUDE.md whose legacy GLM section is removed on update.
 	ClaudeMDPath string
+	// SkillsDir is the Claude Code skills root; the golem skill is refreshed here.
+	SkillsDir string
 	// Out is the writer for progress output.
 	Out io.Writer
 	// ErrOut is the writer for error output.
@@ -417,14 +360,26 @@ func UpdateCmd(opts UpdateOptions) error {
 	installMode := readInstallMode(opts.ConfigDir)
 
 	if installMode == "go-install" {
-		return updateGoInstall(opts.ClaudeMDPath, out, errOut)
+		return updateGoInstall(opts.ClaudeMDPath, opts.SkillsDir, out, errOut)
 	}
 
-	return updateSource(opts.CloneDir, opts.ClaudeMDPath, out)
+	return updateSource(opts.CloneDir, opts.ClaudeMDPath, opts.SkillsDir, out)
+}
+
+// refreshGolemSkill removes any legacy CLAUDE.md GLM section and rewrites the
+// global golem skill, keeping the on-demand manual current after an update.
+func refreshGolemSkill(claudeMDPath, skillsDir string) error {
+	if err := RemoveClaudeMDSection(claudeMDPath); err != nil {
+		return fmt.Errorf("remove legacy CLAUDE.md section: %w", err)
+	}
+	if err := WriteGolemSkill(skillsDir); err != nil {
+		return fmt.Errorf("write golem skill: %w", err)
+	}
+	return nil
 }
 
 // updateSource handles update for clone-based installs via git pull.
-func updateSource(cloneDir, claudeMDPath string, out io.Writer) error {
+func updateSource(cloneDir, claudeMDPath, skillsDir string, out io.Writer) error {
 	// Validate CloneDir is a git repository.
 	gitDir := filepath.Join(cloneDir, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
@@ -467,10 +422,9 @@ func updateSource(cloneDir, claudeMDPath string, out io.Writer) error {
 		}
 	}
 
-	// Re-inject the GLM section into CLAUDE.md.
-	template := loadGLMTemplate(cloneDir)
-	if err := InjectClaudeMD(claudeMDPath, template); err != nil {
-		return fmt.Errorf("inject CLAUDE.md: %w", err)
+	// Refresh the on-demand golem skill.
+	if err := refreshGolemSkill(claudeMDPath, skillsDir); err != nil {
+		return err
 	}
 
 	_, _ = fmt.Fprintln(out, "Update complete.")
@@ -478,7 +432,7 @@ func updateSource(cloneDir, claudeMDPath string, out io.Writer) error {
 }
 
 // updateGoInstall handles update for go-install-based installs.
-func updateGoInstall(claudeMDPath string, out, errOut io.Writer) error {
+func updateGoInstall(claudeMDPath, skillsDir string, out, errOut io.Writer) error {
 	_, _ = fmt.Fprintln(out, "Updating via go install...")
 	goCmd := exec.Command("go", "install", "github.com/veschin/GoLeM/cmd/glm@latest")
 	goCmd.Stdout = out
@@ -487,9 +441,9 @@ func updateGoInstall(claudeMDPath string, out, errOut io.Writer) error {
 		return fmt.Errorf("go install: %w", err)
 	}
 
-	// Re-inject CLAUDE.md with default template (no clone dir for go-install).
-	if err := InjectClaudeMD(claudeMDPath, glmSubagentTemplate); err != nil {
-		return fmt.Errorf("inject CLAUDE.md: %w", err)
+	// Refresh the on-demand golem skill.
+	if err := refreshGolemSkill(claudeMDPath, skillsDir); err != nil {
+		return err
 	}
 
 	_, _ = fmt.Fprintln(out, "Update complete.")
@@ -524,57 +478,6 @@ func gitRevParse(dir, ref string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
-}
-
-// InjectClaudeMD injects or replaces the GLM subagent section (bounded by
-// <!-- GLM-SUBAGENT-START --> and <!-- GLM-SUBAGENT-END --> markers) in the
-// file at claudeMDPath using content from template.
-//
-//   - If the file does not exist it is created containing only the section.
-//   - If the file exists with both markers the section between them is replaced.
-//   - If the file exists without markers the section is appended at the end.
-func InjectClaudeMD(claudeMDPath, template string) error {
-	// Ensure the template itself contains the markers.
-	// If it doesn't already have them, wrap it.
-	templateContent := template
-	if !strings.Contains(templateContent, glmSectionStart) {
-		templateContent = glmSectionStart + "\n" + template + "\n" + glmSectionEnd
-	}
-
-	// Ensure parent directory exists.
-	if err := os.MkdirAll(filepath.Dir(claudeMDPath), 0o755); err != nil {
-		return fmt.Errorf("create parent dir: %w", err)
-	}
-
-	// Check if file exists.
-	existing, err := os.ReadFile(claudeMDPath)
-	if os.IsNotExist(err) {
-		// File does not exist - create it with only the section.
-		return os.WriteFile(claudeMDPath, []byte(templateContent+"\n"), 0o644)
-	}
-	if err != nil {
-		return fmt.Errorf("read %s: %w", claudeMDPath, err)
-	}
-
-	content := string(existing)
-	startIdx := strings.Index(content, glmSectionStart)
-	endIdx := strings.Index(content, glmSectionEnd)
-
-	if startIdx >= 0 && endIdx > startIdx {
-		// Both markers found - replace the section between them (inclusive).
-		before := content[:startIdx]
-		after := content[endIdx+len(glmSectionEnd):]
-		newContent := before + templateContent + after
-		return os.WriteFile(claudeMDPath, []byte(newContent), 0o644)
-	}
-
-	// No markers - append the section at the end.
-	// Add a newline separator if the file doesn't end with one.
-	if len(content) > 0 && !strings.HasSuffix(content, "\n") {
-		content += "\n"
-	}
-	newContent := content + templateContent + "\n"
-	return os.WriteFile(claudeMDPath, []byte(newContent), 0o644)
 }
 
 // RegisterMCPServerAtPath reads the JSON file at path, adds or updates the

@@ -69,10 +69,10 @@ func writeSlotCounterFile(t *testing.T, counterPath string, n int) {
 	writeFile(t, counterPath, strconv.Itoa(n))
 }
 
-// selfPID returns the current process PID — guaranteed to be alive.
+// selfPID returns the current process PID - guaranteed to be alive.
 func selfPID() int { return os.Getpid() }
 
-// deadPID returns a PID that is guaranteed to be dead — near pid_max.
+// deadPID returns a PID that is guaranteed to be dead - near pid_max.
 func deadPID() int { return 4194200 }
 
 // ---------------------------------------------------------------------------
@@ -81,6 +81,25 @@ func deadPID() int { return 4194200 }
 
 // TestReconciliationRunsOnceAtStartup verifies that Reconcile processes all
 // running jobs, marks dead-PID jobs as "failed", and leaves alive jobs intact.
+// TestReconcileContinuesPastJobThatErrors guards against one malformed job
+// aborting the entire reconciliation sweep. The first job (sorted earlier) is
+// queued with no created_at.txt, which makes IsStaleQueued error; the second
+// is a running job with a dead PID that must still be reconciled to "failed".
+func TestReconcileContinuesPastJobThatErrors(t *testing.T) {
+	base := t.TempDir()
+	now := time.Now()
+
+	makeJob(t, base, "job-20260101-000000-aaaaaaaa", "queued", 0, "", false)
+	jobB := makeJob(t, base, "job-20260101-000001-bbbbbbbb", "running", 999999999, "", false)
+
+	if err := Reconcile(base, now); err != nil {
+		t.Fatalf("Reconcile must not abort on a single bad job: %v", err)
+	}
+	if got := readStatus(jobB); got != "failed" {
+		t.Errorf("job b status: got %q, want %q (a bad sibling aborted the sweep)", got, "failed")
+	}
+}
+
 func TestReconciliationRunsOnceAtStartup(t *testing.T) {
 	base := t.TempDir()
 	counterPath := filepath.Join(base, ".running_count")
@@ -411,7 +430,7 @@ func TestPidTxtContainsNonNumericValueTreatedAsDeadPID(t *testing.T) {
 }
 
 // TestPIDReuseByOSAcceptedAsFalsePositive confirms that a job whose PID is
-// alive (even if it's a different process) remains "running" — this is an
+// alive (even if it's a different process) remains "running" - this is an
 // accepted startup-only false positive.
 func TestPIDReuseByOSAcceptedAsFalsePositive(t *testing.T) {
 	base := t.TempDir()

@@ -59,7 +59,11 @@ func Reconcile(subagentsDir string, now time.Time) error {
 			// Flat layout: direct job directory.
 			n, err := reconcileJob(dir, now)
 			if err != nil {
-				return err
+				// One malformed job must not abort the whole sweep: log it and
+				// keep reconciling the rest. The job contributes 0 to the count
+				// and will be retried on the next startup.
+				fmt.Fprintf(os.Stderr, "warning: reconcile %s: %v\n", dir, err)
+				continue
 			}
 			runningCount += n
 		} else {
@@ -75,7 +79,8 @@ func Reconcile(subagentsDir string, now time.Time) error {
 				jobDir := filepath.Join(dir, sub.Name())
 				n, err := reconcileJob(jobDir, now)
 				if err != nil {
-					return err
+					fmt.Fprintf(os.Stderr, "warning: reconcile %s: %v\n", jobDir, err)
+					continue
 				}
 				runningCount += n
 			}
@@ -126,7 +131,7 @@ func reconcileJob(jobDir string, now time.Time) (int, error) {
 }
 
 // CheckJobPID reads the pid.txt for the job at jobDir, checks whether the
-// process is alive (via signal 0), and — if dead — updates status to "failed"
+// process is alive (via signal 0), and - if dead - updates status to "failed"
 // and appends a stderr message.  It does NOT perform a full reconciliation.
 // Returns the current (possibly updated) status string.
 func CheckJobPID(jobDir string) (string, error) {

@@ -5,77 +5,90 @@
 <h1 align="center">GoLeM</h1>
 
 <p align="center">
-  <strong>One wizard. Unlimited golems. Zero Anthropic API costs.</strong>
+  <strong>Delegate bulk work to GLM-5.1 golems. Keep Opus for orchestration. Stop hitting your Opus limit.</strong>
 </p>
 
 <p align="center">
-  Spawn autonomous Claude Code agents powered by GLM-5.1 via Z.AI.<br>
-  Each golem is a full Claude Code instance - reads files, edits code, runs tests, uses MCP servers and skills.<br>
-  You stay on Opus. Your golems run in parallel through your Z.AI Coding Plan.
+  GoLeM lets Claude Code (Opus) offload heavy, repetitive work to parallel golems<br>
+  running GLM-5.1 through your Z.AI Coding Plan. Each golem is a full Claude Code<br>
+  instance - reads files, edits code, runs tests, uses MCP servers and skills.
 </p>
 
 <p align="center">
   <a href="https://github.com/veschin/GoLeM/releases"><img alt="Release" src="https://img.shields.io/github/v/release/veschin/GoLeM?display_name=tag&sort=semver"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/veschin/GoLeM"></a>
   <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/veschin/GoLeM"></a>
-  <a href="#installation"><img alt="Platforms" src="https://img.shields.io/badge/platforms-linux%20%7C%20macos%20%7C%20wsl-blue"></a>
+  <img alt="Platforms" src="https://img.shields.io/badge/platforms-linux%20%7C%20macos%20%7C%20wsl-blue">
 </p>
 
 ---
 
 ![Architecture](docs/architecture.svg?v=6)
 
-## What is this, in one paragraph
+## Who is this for
 
-**Claude Code** is Anthropic's CLI agent - it reads files, edits them, runs
-tests, talks to MCP servers. **Z.AI** is a Chinese provider that hosts the
-**GLM-5.1** model behind an Anthropic-compatible API. **MCP** (Model Context
-Protocol) is how Claude Code discovers tools at runtime. GoLeM is a small Go
-CLI (`glm`) that registers itself as an MCP server, so when you ask Opus to
-"spawn three workers to write tests", it can call `glm_start` three times.
-Each "**golem**" is a real Claude Code instance running GLM-5.1 - same tool
-surface as Opus, lower per-token cost, no Anthropic spend on the workers.
+You already pay for **two** subscriptions:
 
-You stay on your Anthropic plan (Opus orchestrator). The workers run on
-your Z.AI Coding Plan. Linux, macOS, WSL.
+- a **Claude / Opus** plan - your orchestrator and reasoning engine, and
+- a **Z.AI Coding Plan** - cheap, high-throughput GLM-5.1 access.
 
-## TL;DR (60 seconds)
+The problem GoLeM solves: bulk work - codebase-wide refactors, generating tests
+for a dozen modules, repetitive edits - burns through your Opus usage limit
+fast. GoLeM lets Opus delegate that work to GLM-5.1 **golems** running on your
+Z.AI quota, so Opus stays free for the thinking and you stop bouncing off your
+limit.
+
+## Prerequisites
+
+- A **Claude / Opus** subscription - the orchestrator you drive in Claude Code
+- A **[Z.AI Coding Plan](https://z.ai/subscribe)** subscription and API key - powers the golems
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) on your `PATH`
+- Go 1.25+
+- Linux, macOS, or WSL (no native Windows - uses flock and Unix sockets)
+
+## Contents
+
+- [How it works](#how-it-works)
+- [Quickstart](#quickstart)
+- [Installation](#installation)
+- [Commands](#commands)
+- [Usage examples](#usage-examples)
+- [Configuration](#configuration)
+- [MCP server](#mcp-server)
+- [Architecture](#architecture)
+- [Troubleshooting](#troubleshooting)
+
+## How it works
+
+1. In Claude Code, you ask Opus to do bulk work - *"write unit tests for these five modules"*.
+2. Instead of doing it itself (and spending your Opus limit), Opus calls the **`glm_start`** MCP tool - auto-registered during install.
+3. `glm` forks a real **Claude Code subprocess running GLM-5.1** via your Z.AI Coding Plan, in the directory you point it at.
+4. The golem works like Opus would: reads files, edits code, runs tests, uses your MCP servers and skills.
+5. When it finishes, its output and a changelog of file changes flow back to Opus, which collects the result and moves on.
+
+Run several golems in parallel, chain them, or wire them into a dependency DAG.
+The heavy lifting happens on GLM-5.1; your Opus budget is spent only on
+orchestration.
+
+## Quickstart
 
 ```bash
-# 1. Install (needs Go 1.25+ and the Claude Code CLI on PATH)
 go install github.com/veschin/GoLeM/cmd/glm@latest
+glm _install        # prompts for your Z.AI key, registers the MCP server
+glm doctor          # 7 checks should pass
 
-# If `glm version` reports a version older than the latest release, the Go
-# module proxy has not refreshed its @latest pointer yet (happens for a few
-# hours after each new tag). Pin explicitly:
-#   go install github.com/veschin/GoLeM/cmd/glm@v1.2.2
-
-# Make sure $(go env GOPATH)/bin is on your PATH. If `glm` is not found after
-# install, add: export PATH="$(go env GOPATH)/bin:$PATH"
-
-glm _install                       # prompts for your Z.AI key, wires everything up
-
-# 2. Spawn a golem from the shell
+# delegate a task from the shell
 glm run --dir "$PWD" --timeout 300 "add a unit test for parseFlags and run it"
-
-# 3. Or let Claude Code call them via the MCP server (registered automatically)
-#    The host Opus session now has glm_run / glm_start / glm_chain / glm_pipeline tools.
 ```
 
-The default permission mode is `acceptEdits` - golems auto-apply file edits
-but ask before running destructive shell commands. For full autonomy use
-`--unsafe` per call or `permission_mode = "bypassPermissions"` in `glm.toml`.
+Inside Claude Code, just ask Opus to spawn golems - the `glm_run`, `glm_start`,
+`glm_chain`, and `glm_pipeline` MCP tools are registered automatically.
 
-That's it. The rest of this README is the reference.
+Default permission mode is `acceptEdits` (golems auto-apply edits, ask before
+destructive shell commands); use `--unsafe` for full autonomy. If `glm` is not
+found after install, see [Installation](#installation).
 
 ## Installation
-
-### Prerequisites
-
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) on `PATH`
-- [Z.AI Coding Plan](https://z.ai/subscribe) key
-- Go 1.25+
-- Linux, macOS, or WSL (Windows native is not supported - flock and Unix sockets)
 
 ### Via install script (one-liner)
 
@@ -229,7 +242,7 @@ Apply to `session`, `run`, `start`, and `chain`.
 | `--unsafe` | Bypass all permission checks |
 | `--mode MODE` | Set permission mode |
 | `--system-prompt TEXT` | Override the system prompt for this invocation |
-| `--constraint KEY` | Add a behavior constraint (repeatable); see [Constraints](#constraints) |
+| `--constraint KEY` | Add a behavior constraint (repeatable); see [System Prompt and Constraints](#system-prompt-and-constraints) |
 | `--json` | JSON output format |
 
 Claude Code uses three model slots internally: heavy tasks go to opus, normal tasks to sonnet, fast tasks to haiku. All three default to `glm-5.1`. `--model` changes all at once; `--opus`/`--sonnet`/`--haiku` change them individually.

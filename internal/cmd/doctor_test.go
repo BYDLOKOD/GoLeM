@@ -2,6 +2,8 @@ package cmd_test
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,36 @@ import (
 
 	"github.com/veschin/GoLeM/internal/cmd"
 )
+
+// TestDoctorReachableWithNon200Response guards against a false "unreachable"
+// report. An unauthenticated HEAD on a POST-style API endpoint returns 4xx
+// (e.g. 405), but the endpoint is reachable -- the HTTP round trip completed.
+// doctor must report zai_reachable=OK, not FAIL.
+func TestDoctorReachableWithNon200Response(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}))
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	opts := cmd.DoctorOptions{
+		ZAIEndpoint: srv.URL,
+		HTTPTimeout: 2 * time.Second,
+	}
+	if err := cmd.DoctorCmd(opts, &buf); err != nil {
+		t.Fatalf("DoctorCmd: %v", err)
+	}
+	for line := range strings.SplitSeq(buf.String(), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "zai_reachable") {
+			if !strings.Contains(line, "OK") {
+				t.Errorf("zai_reachable should be OK for a reachable endpoint returning 405; got: %q", line)
+			}
+			return
+		}
+	}
+	t.Errorf("zai_reachable line not found in output:\n%s", buf.String())
+}
 
 // ─── DoctorCmd tests ─────────────────────────────────────────────────────────
 

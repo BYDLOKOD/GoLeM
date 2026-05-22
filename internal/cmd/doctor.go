@@ -181,22 +181,19 @@ func checkZAIReachable(endpoint string, timeout time.Duration) CheckResult {
 		return CheckResult{
 			Name:   "zai_reachable",
 			Status: "FAIL",
-			Detail: fmt.Sprintf("%s connection timed out after %dms", endpoint, timeout.Milliseconds()),
+			Detail: fmt.Sprintf("%s unreachable: %v", endpoint, err),
 		}
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode == http.StatusOK {
-		return CheckResult{
-			Name:   "zai_reachable",
-			Status: "OK",
-			Detail: fmt.Sprintf("%s responded with %d in %dms", endpoint, resp.StatusCode, elapsed.Milliseconds()),
-		}
-	}
+	// Any HTTP response proves reachability: the TCP/TLS/HTTP round trip
+	// completed. The status code reflects auth/routing (an unauthenticated HEAD
+	// on a POST-style API commonly yields 401/403/404/405), not connectivity,
+	// so a non-2xx must not be reported as a connection failure.
 	return CheckResult{
 		Name:   "zai_reachable",
-		Status: "FAIL",
-		Detail: fmt.Sprintf("%s responded with %d", endpoint, resp.StatusCode),
+		Status: "OK",
+		Detail: fmt.Sprintf("%s responded with %d in %dms", endpoint, resp.StatusCode, elapsed.Milliseconds()),
 	}
 }
 

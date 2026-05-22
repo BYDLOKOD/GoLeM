@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.2.3 - 2026-05-22
+
+- Global flags placed before the subcommand are now tolerated. Previously
+  `glm --opus MODEL session` failed with "Unknown command: --opus" because the
+  first token was taken as the command; the real subcommand is now located and
+  the leading flags are folded into its argument list, so both
+  `glm session --opus MODEL` and `glm --opus MODEL session` work. When no
+  subcommand can be found, the error now hints that flags go after the command.
+
+## v1.2.2 - 2026-05-22
+
+Patch: version constant aligned with the tag (v1.2.1 shipped a binary that
+self-reported 1.2.0).
+
 ## v1.2.0 - 2026-05-21
 
 Major release. All new subsystems land together - MCP, DAG pipelines, smart

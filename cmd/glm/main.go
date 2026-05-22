@@ -29,7 +29,7 @@ import (
 	"github.com/veschin/GoLeM/internal/slot"
 )
 
-const version = "1.2.2"
+const version = "1.2.3"
 
 // logger is the global structured logger, initialized in run().
 var logger *log.Logger
@@ -76,6 +76,16 @@ func run(args []string) int {
 
 	subcmd := args[0]
 	rest := args[1:]
+
+	// Tolerate global flags placed before the subcommand, e.g.
+	// "glm --opus MODEL session": locate the real subcommand and fold the
+	// leading flags into its argument list.
+	if strings.HasPrefix(subcmd, "-") && !isGlobalInfoFlag(subcmd) {
+		if name, reordered, ok := reorderSubcommand(args); ok {
+			subcmd = name
+			rest = reordered
+		}
+	}
 
 	logger.Debug("command=" + subcmd)
 
@@ -124,9 +134,56 @@ func run(args []string) int {
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", subcmd)
+		if strings.HasPrefix(subcmd, "-") {
+			fmt.Fprintln(os.Stderr, "Hint: flags go after the command, e.g. 'glm session --opus MODEL'.")
+		}
 		usage(os.Stderr)
 		return 1
 	}
+}
+
+// isGlobalInfoFlag reports whether s is a top-level version/help flag that
+// must be handled directly rather than treated as a misplaced subcommand flag.
+func isGlobalInfoFlag(s string) bool {
+	return s == "--version" || s == "-v" || s == "--help" || s == "-h"
+}
+
+// reorderSubcommand handles global flags placed before the subcommand. It scans
+// args for the first known subcommand token (skipping value-taking flags and
+// their values) and returns that subcommand plus the remaining args in their
+// original order. ok is false when no known subcommand is found.
+func reorderSubcommand(args []string) (string, []string, bool) {
+	valueFlags := map[string]bool{
+		"-d": true, "--dir": true, "-t": true, "--timeout": true,
+		"-m": true, "--model": true, "--opus": true, "--sonnet": true,
+		"--haiku": true, "--mode": true, "--tier": true,
+		"--system-prompt": true, "--constraint": true,
+	}
+	known := map[string]bool{
+		"run": true, "start": true, "status": true, "result": true,
+		"log": true, "list": true, "clean": true, "kill": true,
+		"chain": true, "pipeline": true, "session": true, "doctor": true,
+		"update": true, "config": true, "mcp": true,
+		"_install": true, "_uninstall": true, "_proxy": true,
+	}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if valueFlags[a] {
+			i++ // skip the flag's value
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue // boolean flag
+		}
+		if known[a] {
+			rest := make([]string, 0, len(args)-1)
+			rest = append(rest, args[:i]...)
+			rest = append(rest, args[i+1:]...)
+			return a, rest, true
+		}
+		return "", nil, false // first positional is not a known command
+	}
+	return "", nil, false
 }
 
 func usage(w io.Writer) {

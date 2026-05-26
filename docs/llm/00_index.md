@@ -80,6 +80,11 @@ See also: [handoff.md](handoff.md).
   post-mortem: a Claude Code output-shape change silently blanked golem output
   (v1.4.0). Read before touching `claude --output-format json` parsing.
 
+- [90_lessons/02_mcp_oneof_top_level.md](90_lessons/02_mcp_oneof_top_level.md) -
+  post-mortem: a top-level `oneOf` in `glm_chain`'s input_schema crashed every
+  Claude Code session at first model call (v1.5.2). Read before adding any
+  JSON-Schema disjunction to an MCP tool that rides through the Anthropic API.
+
 ## Kinds
 
 | kind | Meaning |

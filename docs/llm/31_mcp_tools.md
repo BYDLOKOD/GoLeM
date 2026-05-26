@@ -110,6 +110,14 @@ Input fields: `prompts` or `steps` (at least one required), `dir`, `timeout`,
 `model`, `permission_mode`, `continue_on_error`, `system_prompt`,
 `constraints`.
 
+The "at least one" rule is **enforced at runtime in the handler**, not in
+the schema. The input schema declares both fields as optional, has no
+top-level `required`, and uses no top-level `oneOf`/`allOf`/`anyOf` -
+Anthropic's Messages API rejects those at the top level of a tool schema
+with HTTP 400. When both fields are supplied, `steps` takes precedence and
+`prompts` is ignored. See
+[90_lessons/02_mcp_oneof_top_level.md](90_lessons/02_mcp_oneof_top_level.md).
+
 ## glm_pipeline
 
 Handler: `PipelineHandler.Handle` (`tools/pipeline.go`).

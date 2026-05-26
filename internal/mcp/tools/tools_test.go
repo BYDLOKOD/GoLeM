@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -211,7 +212,7 @@ func TestRunHandler_ParamMapping(t *testing.T) {
 // TestRunHandler_CallsExecuteJob verifies that RunHandler reaches the real
 // execution layer (cmd.ExecuteJob via reconcileAndInitSlots + WaitForSlot)
 // rather than the stub cmd.RunCmd. We verify this by checking that an empty
-// subagents dir (no pre-created job dirs) results in an err:execution error —
+// subagents dir (no pre-created job dirs) results in an err:execution error -
 // the stub cmd.RunCmd returns success even with no pre-created job dirs, while
 // cmd.ExecuteJob attempts to run claude and returns an error when it fails.
 func TestRunHandler_CallsExecuteJob(t *testing.T) {
@@ -233,7 +234,7 @@ func TestRunHandler_CallsExecuteJob(t *testing.T) {
 	// Either way, the error must not be err:user (input validation error).
 	_, err := h.Handle(context.Background(), input)
 	if err == nil {
-		// No error means claude ran successfully — real execution was attempted
+		// No error means claude ran successfully - real execution was attempted
 		// and succeeded. This is also correct behavior.
 		return
 	}
@@ -244,7 +245,7 @@ func TestRunHandler_CallsExecuteJob(t *testing.T) {
 	// err:user means input validation rejected the request before execution.
 	// err:execution means execution was attempted (the real path).
 	if toolErr.Code == "err:user" {
-		t.Errorf("got err:user: %q — input validation should have passed; real execution should have been attempted", toolErr.Message)
+		t.Errorf("got err:user: %q - input validation should have passed; real execution should have been attempted", toolErr.Message)
 	}
 }
 
@@ -258,7 +259,7 @@ func TestRunHandler_DefaultDirApplied(t *testing.T) {
 	tc := newTestToolContext(t)
 	h := RunHandler(tc)
 
-	// Dir is intentionally omitted — should default to ".".
+	// Dir is intentionally omitted - should default to ".".
 	input := mustMarshal(t, RunInput{Prompt: "hello"})
 
 	// We expect an execution attempt (not a validation error about missing dir).
@@ -267,7 +268,7 @@ func TestRunHandler_DefaultDirApplied(t *testing.T) {
 		toolErr, ok := err.(*ToolError)
 		if ok && toolErr.Code == "err:user" {
 			// A user error here would mean Dir="" was passed through as-is and
-			// Validate rejected it — the bug we want to catch.
+			// Validate rejected it - the bug we want to catch.
 			t.Errorf("got err:user; dir default was not applied: %v", toolErr.Message)
 		}
 	}
@@ -760,6 +761,48 @@ func TestChainHandler_StepsField_TooFewSteps(t *testing.T) {
 	}
 }
 
+// TestChainHandler_BothFieldsPresent_StepsTakePrecedence locks in the contract
+// that when an input carries both `prompts` and `steps`, the handler uses
+// `steps` and ignores `prompts`. The schema declares both fields as optional,
+// so the runtime precedence rule is the only thing keeping behavior
+// deterministic for clients that supply both. The test feeds one step (invalid)
+// alongside two prompts (valid) and asserts that the resulting err:user message
+// names "steps" rather than "prompts" - which can only happen if the handler
+// took the steps branch.
+func TestChainHandler_BothFieldsPresent_StepsTakePrecedence(t *testing.T) {
+	t.Parallel()
+	tc := newTestToolContext(t)
+	h := ChainHandler(tc)
+
+	raw := `{
+		"prompts": ["valid one", "valid two"],
+		"steps":   [{"prompt": "only one step"}],
+		"dir":     "."
+	}`
+	_, err := h.Handle(context.Background(), json.RawMessage(raw))
+	if err == nil {
+		t.Fatal("expected error when only 1 step is supplied")
+	}
+	toolErr, ok := err.(*ToolError)
+	if !ok {
+		t.Fatalf("expected *ToolError, got %T (%v)", err, err)
+	}
+	if toolErr.Code != "err:user" {
+		t.Errorf("code = %q, want err:user", toolErr.Code)
+	}
+	// The steps-branch sentinel at chain.go:33 says "at least 2 steps required for chain".
+	// The prompts-branch sentinel at chain.go:44 says "at least 2 prompts are required for a chain".
+	// Asserting on the full prompts-branch sentinel (rather than the bare word "prompts")
+	// keeps this test from breaking on incidental phrasing tweaks while still failing
+	// loudly if the branch precedence ever inverts.
+	if !strings.Contains(toolErr.Message, "steps required for chain") {
+		t.Errorf("message %q must carry the steps-branch sentinel - handler should have taken the steps branch", toolErr.Message)
+	}
+	if strings.Contains(toolErr.Message, "prompts are required for a chain") {
+		t.Errorf("message %q carries the prompts-branch sentinel - the prompts branch must be skipped when steps is non-empty", toolErr.Message)
+	}
+}
+
 func TestChainHandler_StepsField_Conversion(t *testing.T) {
 	t.Parallel()
 	raw := `{
@@ -938,47 +981,36 @@ func TestKillDefinition_HasRequiredJobID(t *testing.T) {
 }
 
 // TestChainDefinition_AcceptsEitherPromptsOrSteps verifies that the schema
-// does NOT mark `prompts` as the sole required field — the handler accepts
-// either `prompts` OR `steps`, and the schema must reflect that contract so
-// strict client-side validators don't reject `steps`-only inputs.
+// omits top-level `required` and `oneOf` - the handler validates at runtime
+// that at least one of `prompts` or `steps` is provided. This keeps the
+// schema compatible with APIs that reject oneOf/allOf/anyOf at the top level.
 func TestChainDefinition_AcceptsEitherPromptsOrSteps(t *testing.T) {
 	t.Parallel()
 	schema := ChainDefinition()
 
-	// Top-level `required` must not contain "prompts" alone — that would
-	// reject the `steps`-only form which the handler accepts at runtime.
-	if required, ok := schema["required"].([]string); ok {
-		for _, r := range required {
-			if r == "prompts" {
-				t.Errorf("top-level required must not list \"prompts\" alone; got %v", required)
-			}
+	// Top-level `required` must be absent - both prompts and steps are optional
+	// at the schema level; the handler enforces the "at least one" rule.
+	if _, ok := schema["required"]; ok {
+		t.Error("top-level \"required\" must be absent; handler validates at runtime")
+	}
+
+	// oneOf/allOf/anyOf must be absent - Anthropic API rejects them.
+	for _, key := range []string{"oneOf", "allOf", "anyOf"} {
+		if _, ok := schema[key]; ok {
+			t.Errorf("schema must not contain %q at top level (Anthropic API rejects it)", key)
 		}
 	}
 
-	// The schema must express the disjunction via oneOf so JSON-schema clients
-	// understand that exactly one of prompts/steps is required.
-	oneOf, ok := schema["oneOf"].([]map[string]any)
+	// Both properties must exist as optional fields.
+	props, ok := schema["properties"].(map[string]any)
 	if !ok {
-		t.Fatal("oneOf field missing or wrong type: schema must declare prompts/steps as alternatives")
+		t.Fatal("schema missing \"properties\"")
 	}
-	if len(oneOf) != 2 {
-		t.Fatalf("oneOf len = %d, want 2 (prompts-only and steps-only)", len(oneOf))
+	if _, ok := props["prompts"]; !ok {
+		t.Error("schema.properties missing \"prompts\"")
 	}
-
-	// Collect the required keys from each branch and verify both shapes are listed.
-	seen := map[string]bool{}
-	for _, branch := range oneOf {
-		req, _ := branch["required"].([]string)
-		if len(req) != 1 {
-			t.Fatalf("oneOf branch %+v must list exactly one required field", branch)
-		}
-		seen[req[0]] = true
-	}
-	if !seen["prompts"] {
-		t.Error("oneOf must include a branch requiring \"prompts\"")
-	}
-	if !seen["steps"] {
-		t.Error("oneOf must include a branch requiring \"steps\"")
+	if _, ok := props["steps"]; !ok {
+		t.Error("schema.properties missing \"steps\"")
 	}
 }
 
@@ -1123,7 +1155,7 @@ func TestChainDefinition_HasSystemPromptAndConstraints(t *testing.T) {
 // propagates system_prompt and constraints from input into cmd.Flags.
 // We test this indirectly: a non-empty SystemPrompt in RunInput must not be
 // silently dropped. Since the handler validates and calls ExecuteJob, any
-// err:user code would mean input was rejected — not what we want.
+// err:user code would mean input was rejected - not what we want.
 // This test confirms that providing system_prompt does not cause a user error.
 func TestRunHandler_SystemPromptFromInput(t *testing.T) {
 	t.Parallel()
@@ -1145,7 +1177,7 @@ func TestRunHandler_SystemPromptFromInput(t *testing.T) {
 		if ok && toolErr.Code == "err:user" {
 			t.Errorf("system_prompt/constraints caused unexpected validation error: %v", toolErr.Message)
 		}
-		// err:execution is fine — real claude execution attempted
+		// err:execution is fine - real claude execution attempted
 	}
 }
 
@@ -1163,7 +1195,7 @@ func TestRunHandler_SystemPromptDefaultFromConfig(t *testing.T) {
 
 	input := mustMarshal(t, RunInput{
 		Prompt: "do a task",
-		// No SystemPrompt — should fall back to config.
+		// No SystemPrompt - should fall back to config.
 	})
 
 	_, err := h.Handle(context.Background(), input)

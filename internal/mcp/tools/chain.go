@@ -143,7 +143,7 @@ func ChainDefinition() map[string]any {
 			},
 			"steps": map[string]any{
 				"type":        "array",
-				"description": "Alternative to prompts — array of step objects with optional validation and retry. If provided, prompts field is ignored.",
+				"description": "Alternative to prompts - array of step objects with optional validation and retry. If provided, prompts field is ignored.",
 				"items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
@@ -166,12 +166,9 @@ func ChainDefinition() map[string]any {
 		},
 		// Neither `prompts` nor `steps` is hard-required at the schema level:
 		// the handler accepts either form and validates at runtime that at
-		// least one is populated with the required minimum step count. Listing
-		// only one as required would reject the other valid shape under strict
-		// schema validators.
-		"oneOf": []map[string]any{
-			{"required": []string{"prompts"}},
-			{"required": []string{"steps"}},
-		},
+		// least one is populated with the required minimum step count.
+		// NOTE: oneOf/allOf/anyOf are not supported at the top level of a
+		// tool's input_schema by the Anthropic API (400 error), so we omit
+		// them here and rely on runtime validation in the handler.
 	}
 }
